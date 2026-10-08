@@ -117,11 +117,42 @@ Input that starts with `/` is a command. It never goes to the model.
 | `/model` | REPL | Show the current model. `/model <name>` switches to that model and saves it |
 | `/mcp` | REPL | Show configured MCP servers, their connection status, and their tools |
 | `/copy` | REPL | Copy the last answer to the system clipboard |
+| `/skills` | REPL | List installed skills and whether each one is enabled |
+| `/skill enable <name>`, `/skill disable <name>` | REPL | Turn a skill on or off |
+| `/<skill-name>` | REPL | Enable a skill by typing its name as a command |
 | `/exit`, `/quit` | REPL | Leave the REPL |
 
 Any other input that starts with `/` prints `no such command: /<name>` immediately and does nothing else. Nothing is sent to the model, so a typo costs no API quota.
 
 Note that this applies to anything starting with `/`, including paths typed as a prompt. To give the model a path, use `@` (see below) instead of starting the message with `/`.
+
+### Skills
+
+A skill is a reusable set of instructions the agent follows when it is enabled. Each skill is a folder with a `SKILL.md` file:
+
+```
+~/.config/shellie-code/skills/
+└── python-test/
+    └── SKILL.md
+```
+
+`SKILL.md` can start with a `description:` line, which `/skills` and completion show next to the name:
+
+```markdown
+description: Run and write Python tests with pytest
+
+When asked to test Python code, ...
+```
+
+Create the folder and file, then:
+
+- `/skills` lists every skill and marks the enabled ones `on`.
+- `/python-test` (or `/skill enable python-test`) enables the skill. Its instructions are added to the system prompt.
+- `/skill disable python-test` turns it off.
+
+Enabled skills are saved in `~/.config/shellie-code/enabled_skills.json`, so they stay on across sessions. Enabling or disabling a skill starts a new conversation, the same as `/model`. Skills are read when the agent starts, so changing a `SKILL.md` file takes effect after you enable or disable the skill again or restart `codesh`.
+
+Skills only change the instructions. They do not add tools.
 
 ### Shell commands
 

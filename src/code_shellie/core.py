@@ -10,6 +10,7 @@ from rich.markup import escape
 from .config import get_api_key, get_model_name
 from .tools import TOOL_DECLARATIONS, execute_tool
 from .context import load_contexts
+from .skills import enabled_skills_prompt
 from .mentions import expand_mentions
 from .mcp_client import get_manager
 
@@ -48,7 +49,8 @@ class Agent:
         if extra_context:
             base_instruction += f"\n\n{extra_context}"
             
-        self.system_instruction = base_instruction
+        self._base_instruction = base_instruction
+        self.system_instruction = self._build_instruction()
         self.chat = self.client.chats.create(
             model=self.model,
             config=types.GenerateContentConfig(
@@ -61,6 +63,18 @@ class Agent:
         self.total_token_count = 0
         self.last_answer = ""
         self.model_limit = self._get_model_limit()
+
+    def _build_instruction(self) -> str:
+        """Base instruction, project/system context, then the enabled skills."""
+        skills = enabled_skills_prompt()
+        if skills:
+            return f"{self._base_instruction}\n\n{skills}"
+        return self._base_instruction
+
+    def refresh_skills(self):
+        """Rebuild the system prompt after skills change. Starts a fresh chat, like /model does."""
+        self.system_instruction = self._build_instruction()
+        self.reset_chat()
 
     def reset_chat(self):
         """Reset the conversation chat session while keeping client/model configuration."""
