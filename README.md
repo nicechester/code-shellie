@@ -1,3 +1,300 @@
 # Code Shellie
 
-Gemini-powered autonomous coding agent with CLI and Telegram remote access, inspired by Claude Code.
+Code Shellie (`codesh`) is a Gemini-powered coding agent for your local terminal, inspired by Claude Code. You describe a task in plain language; the agent reads and writes files, runs shell commands, and reports back. It can also attach files and directories to your message and pull in tools from [Model Context Protocol](https://modelcontextprotocol.io) (MCP) servers.
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Usage](#usage)
+  - [Interactive mode](#interactive-mode)
+  - [One-shot mode](#one-shot-mode)
+  - [Slash commands](#slash-commands)
+  - [Shell commands](#shell-commands)
+  - [Attaching files with `@`](#attaching-files-with-)
+  - [Exiting](#exiting)
+- [Configuration](#configuration)
+  - [API key and model](#api-key-and-model)
+  - [System context](#system-context)
+  - [Project context](#project-context)
+- [Tools available to the model](#tools-available-to-the-model)
+- [MCP servers](#mcp-servers)
+- [Rate limits and errors](#rate-limits-and-errors)
+- [Project layout](#project-layout)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## Requirements
+
+- Python 3.10 or newer
+- A Google Gemini API key ([Google AI Studio](https://aistudio.google.com/))
+- Linux or macOS with a POSIX shell (`/bin/sh`) for `!command` and the `run_shell_command` tool
+
+## Installation
+
+From the project root:
+
+```bash
+./install.sh
+```
+
+The script:
+
+1. Creates `venv/` in the project directory if it is missing or broken.
+2. Installs dependencies and the package in editable mode (`pip install -e .`).
+3. Links `~/.local/bin/codesh` to the virtual environment's `codesh` executable.
+4. Warns if `~/.local/bin` is not on your `PATH`.
+
+If the warning appears, add this to `~/.bashrc` or `~/.zshrc`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then open a new shell and run `codesh`.
+
+To reinstall after moving the project directory, run `./install.sh` again. The virtual environment's scripts store absolute paths, so the script rebuilds `venv/` when it is broken.
+
+## Quick start
+
+```bash
+codesh
+```
+
+On first run, if no API key is configured, Code Shellie asks for one (see [API key and model](#api-key-and-model)). Then you get a prompt:
+
+```
+codesh> summarize the README in this directory
+```
+
+## Usage
+
+Code Shellie has two modes: interactive (the REPL) and one-shot.
+
+### Interactive mode
+
+Run `codesh` with no arguments. You get a `codesh>` prompt. Type an instruction and press Enter; the agent answers and may run tools along the way. Each tool call is printed as it runs (`⚡ Executing tool: ...`), followed by a truncated result.
+
+The conversation is kept for the whole session, so follow-up requests can refer to earlier ones.
+
+Completion is available as you type:
+
+- Type `/` to list slash commands, or `/mc` to narrow it to `/mcp` (see [Slash commands](#slash-commands)).
+- Type `@` to complete file and directory paths (see [Attaching files with `@`](#attaching-files-with-)).
+
+### One-shot mode
+
+Pass a prompt as an argument to run a single turn and exit:
+
+```bash
+codesh "list the Python files in src/ and explain what each one does"
+codesh '!git status'
+codesh /setup
+```
+
+A one-shot prompt that starts with `/` is treated as a command. Only `/setup` is supported in this mode. Other slash commands print `no such command` (see [Slash commands](#slash-commands)).
+
+### Slash commands
+
+Input that starts with `/` is a command. It never goes to the model.
+
+| Command | Where | Description |
+|---|---|---|
+| `/help` | REPL | List available commands |
+| `/setup` | REPL, one-shot | Change the Gemini API key and model name |
+| `/model` | REPL | Show the current model. `/model <name>` switches to that model and saves it |
+| `/mcp` | REPL | Show configured MCP servers, their connection status, and their tools |
+| `/exit`, `/quit` | REPL | Leave the REPL |
+
+Any other input that starts with `/` prints `no such command: /<name>` immediately and does nothing else. Nothing is sent to the model, so a typo costs no API quota.
+
+Note that this applies to anything starting with `/`, including paths typed as a prompt. To give the model a path, use `@` (see below) instead of starting the message with `/`.
+
+### Shell commands
+
+Start a line with `!` to run it in your shell without involving the model:
+
+```
+codesh> !ls -la
+codesh> !npm test
+```
+
+Output appears directly in the terminal. The command's exit status is not reported to the model. Use a natural-language request if you want the agent to act on the result.
+
+### Attaching files with `@`
+
+Put `@` followed by a path anywhere in your message to attach that file's text, or a listing of a directory, to the message sent to the model:
+
+```
+codesh> explain what @src/code_shellie/core.py does
+codesh> compare @src/code_shellie/tools.py and @src/code_shellie/mcp_client.py
+```
+
+Rules:
+
+- The `@` must start the input or follow whitespace. Email addresses such as `user@host` are not treated as mentions.
+- Paths are resolved relative to the current directory and may use `~`.
+- Trailing punctuation (`.`, `,`, `;`, `:`, `!`, `?`, `)`, quotes) is ignored when the path doesn't exist as written.
+- A directory attachment lists its entries, one per line, without hidden files. Directories get a trailing `/`.
+- Attachments are capped at 100,000 characters; longer text is cut and marked `[truncated]`.
+- Files that are not valid UTF-8 are attached as a note saying they are not readable as text.
+- A path mentioned twice is attached once.
+- Typing `@` in the REPL offers file and directory completion.
+
+### Exiting
+
+In the REPL, type `exit`, `quit`, `/exit`, or `/quit`, or press Ctrl+D. Ctrl+C also leaves the REPL.
+
+## Configuration
+
+Code Shellie reads its settings from `~/.config/shellie-code/`. Everything else is optional.
+
+| File | Purpose |
+|---|---|
+| `~/.config/shellie-code/.env` | API key and model name (written by `/setup`) |
+| `~/.config/shellie-code/SYSTEM.md` | Instructions added to every session, for every project |
+| `~/.config/shellie-code/mcp.json` | MCP server definitions |
+| `.shellie/PROJECT.md` (in a project) | Instructions added for that project |
+
+### API key and model
+
+The first time you run `codesh` without an API key, setup starts automatically. You can also run `/setup` at any time.
+
+Setup asks for:
+
+- **Gemini API Key.** Entered hidden. Press Enter to keep the current key.
+- **Gemini Model Name.** Defaults to `gemini-2.5-flash`.
+
+Settings are saved to `~/.config/shellie-code/.env`:
+
+```
+GEMINI_API_KEY=your-key
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+You can also set these in the environment or in a `.env` file in the directory you run `codesh` from. The environment and the local `.env` are read in addition to the saved file.
+
+The model runs at temperature 0.2.
+
+### System context
+
+Create `~/.config/shellie-code/SYSTEM.md` to give the agent standing instructions for every project. Its contents are added to the system prompt under "System Context". For example:
+
+```markdown
+- Prefer Python 3.12 idioms.
+- Use `pytest` for tests.
+- Never run destructive git commands without asking.
+```
+
+### Project context
+
+Create `.shellie/PROJECT.md` in a project's root. The agent looks for it in the current directory and then in each parent directory, and uses the first one it finds. Its contents are added under "Project Context" in the system prompt. For example:
+
+```markdown
+# Project notes
+- This is a FastAPI service; models live in app/models.py.
+- Run tests with `make test`.
+- Do not modify files under migrations/.
+```
+
+## Tools available to the model
+
+The model can call these tools. There are no approval prompts: a tool call runs as soon as the model makes it.
+
+| Tool | What it does |
+|---|---|
+| `read_file(file_path)` | Returns the text of a file. Returns an error message if the file does not exist. |
+| `write_file(file_path, content)` | Writes text to a file, creating parent directories as needed. Overwrites existing files. |
+| `list_directory(dir_path)` | Lists a directory, folders first. Hidden entries (starting with `.`) are omitted. |
+| `run_shell_command(command)` | Runs a command through the shell and returns stdout, stderr, and any non-zero exit code. Times out after 60 seconds. |
+| `mcp__<server>__<tool>` | Tools from configured MCP servers (see below). |
+
+Because tools run without confirmation, the agent can change or delete files and run any command your user account can. Keep the working directory and the requests you make in mind, and review changes with `git diff` or similar.
+
+## MCP servers
+
+Code Shellie can use tools from [Model Context Protocol](https://modelcontextprotocol.io) servers. Add them to `~/.config/shellie-code/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "fs": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "env": {}
+    },
+    "remote": {
+      "url": "https://example.com/mcp",
+      "headers": {"Authorization": "Bearer ${MY_TOKEN}"}
+    }
+  }
+}
+```
+
+- A server with `command` is launched as a local subprocess (stdio transport).
+- A server with `url` is reached over streamable HTTP. Optional `headers` are sent with each request.
+- `${VAR}` in `command`, `args`, `env`, `url`, and `headers` is replaced with the value of the environment variable `VAR`, so tokens can stay out of the file. An unset variable becomes an empty string.
+- Each tool is exposed to the model as `mcp__<server>__<tool>`.
+- Servers connect when `codesh` starts. A server that fails to start (bad command, unreachable URL, rejected auth) is reported and skipped; the others still load.
+- Use `/mcp` in the REPL to see each server's status and tool list.
+- Tool calls time out after 60 seconds. Server errors are passed back to the model as text.
+
+Only the `command`/`args`/`env` and `url`/`headers` fields are read. The `type` field used by some other clients is ignored, so an SSE-only server will not connect (only streamable HTTP is supported).
+
+## Rate limits and errors
+
+The Gemini client follows this policy:
+
+- **Per-minute quota (429, RPM):** waits for the delay the API suggests, retries once, and stops if the limit is hit again.
+- **Daily quota (429, RPD):** stops immediately and reports that the daily quota is reached.
+- **Server errors (5xx):** retries up to three times with 1, 2, and 4 second delays, then stops.
+
+Other API errors (for example, an invalid API key or a rejected model name) are not caught. They surface on your first request, not at startup, and they end the session with a traceback.
+
+## Project layout
+
+```
+codeshellie/
+├── pyproject.toml          # package metadata and dependencies; defines the `codesh` command
+├── install.sh              # sets up venv/ and links codesh into ~/.local/bin
+├── README.md
+├── docs/DESIGN.md          # design notes
+└── src/code_shellie/
+    ├── cli.py              # entry point, REPL, slash commands, one-shot mode
+    ├── core.py             # Agent: Gemini chat, system prompt, tool-call loop, retry policy
+    ├── tools.py            # built-in tools and their Gemini function declarations
+    ├── mcp_client.py       # MCP server connections, tool discovery, /mcp status
+    ├── config.py           # reads and writes ~/.config/shellie-code/.env
+    ├── setup.py            # interactive API key and model setup
+    ├── context.py          # loads SYSTEM.md and .shellie/PROJECT.md
+    ├── mentions.py         # expands @path attachments
+    └── completion.py       # tab completion for @paths
+```
+
+Running the tests is not yet set up; the project has no test suite.
+
+## Troubleshooting
+
+**`No API key found. Entering setup mode...`**
+Run through setup, or write `GEMINI_API_KEY` to `~/.config/shellie-code/.env`.
+
+**`Error initializing agent: ...`**
+No API key was available when the agent started. Run `/setup` (or `codesh /setup`).
+
+**Traceback after your first request**
+The API key or model name is probably wrong. Run `codesh /setup` to correct them, then start `codesh` again.
+
+**`codesh: command not found`**
+`~/.local/bin` is not on your `PATH`. See [Installation](#installation).
+
+**`no such command: /something`**
+You started input with `/` but it isn't a known command. Run `/help` in the REPL to see the list. To send a path or text that starts with `/` to the model, put it after other words, or use `@path`.
+
+**`MCP server '<name>' failed to start: ...`**
+Check the server's `command` or `url` in `mcp.json`, and that any `${VAR}` values are set in your environment. Run `/mcp` to see the error again.
+
+**`Daily quota (RPD) reached. Stopping.`**
+Wait until the quota resets, or use a different key or model.
+
+**`Error: Command timed out after 60 seconds.`**
+A shell command the agent ran did not finish within 60 seconds. Ask the agent to run it in a way that finishes, or run it yourself with `!`.

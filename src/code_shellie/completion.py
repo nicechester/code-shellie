@@ -4,6 +4,32 @@ from prompt_toolkit.completion import Completer, Completion
 
 MAX_SUGGESTIONS = 200
 
+# Slash commands handled in cli.py, with the description shown beside each suggestion.
+SLASH_COMMANDS = {
+    "/help": "Show available commands",
+    "/setup": "Reconfigure Gemini API key and model",
+    "/model": "Show or change the Gemini model",
+    "/mcp": "Show configured MCP servers and their tools",
+    "/exit": "Exit the REPL",
+    "/quit": "Exit the REPL",
+}
+
+class SlashCompleter(Completer):
+    """Suggests slash commands while the input is a single word starting with "/"."""
+
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+        if not text.startswith("/") or any(c.isspace() for c in text):
+            return
+        for command, description in SLASH_COMMANDS.items():
+            if command.startswith(text):
+                yield Completion(
+                    command,
+                    start_position=-len(text),
+                    display=command,
+                    display_meta=description,
+                )
+
 class MentionCompleter(Completer):
     """Suggests file and directory paths after an "@" in the REPL."""
 

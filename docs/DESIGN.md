@@ -1,7 +1,7 @@
 # Code Shellie — Architectural Design Document
 
 ## 1. Overview
-`codesh` is an autonomous, Gemini-powered coding agent inspired by Claude Code. It runs primarily in the developer's local terminal (CLI) with support for remote access (e.g., Telegram bots) and interactive approval prompts. By leveraging Gemini's massive context window, it can ingest entire codebases, reason about complex refactoring and bug fixing, and execute tools securely on the host machine.
+`codesh` is an autonomous, Gemini-powered coding agent inspired by Claude Code. It runs primarily in the developer's local terminal (CLI) and supports interactive approval prompts. By leveraging Gemini's massive context window, it can ingest entire codebases, reason about complex refactoring and bug fixing, and execute tools securely on the host machine.
 
 ---
 
@@ -18,8 +18,7 @@ shellie-code/
 │       ├── __init__.py
 │       ├── core.py       # Gemini Agent Loop & Tool execution engine
 │       ├── tools.py      # File I/O, Shell execution, Git operations
-│       ├── cli.py        # Terminal interface (Rich, Prompt Toolkit)
-│       └── remote.py     # Telegram bot bridge for remote access & inline approvals
+│       └── cli.py        # Terminal interface (Rich, Prompt Toolkit)
 └── tests/
     ├── __init__.py
     └── test_core.py
@@ -47,16 +46,12 @@ The agent interacts with the filesystem and OS via defined function calling tool
 - Built using `click`, `rich`, and `prompt_toolkit`.
 - Provides streaming output, syntax highlighting, and interactive prompts (`[Y/n]` confirmations).
 
-### 3.4 `remote.py` (Telegram Bridge)
-- Optional background bridge using `python-telegram-bot`.
-- Sends notifications and **Inline Keyboards** (`[Approve]`, `[Reject]`) to the user's mobile device when the agent needs permission for critical operations.
-
 ---
 
 ## 4. Execution Flow
 1. User invokes `codesh "Fix the bug in main.py"` in the terminal.
 2. `core.py` initializes context (including git status and directory structure) and queries Gemini.
 3. Gemini decides to call `read_file("src/main.py")`.
-4. `cli.py` (or `remote.py` if remote mode is active) displays the planned tool call and asks for confirmation if required.
+4. `cli.py` displays the planned tool call and asks for confirmation if required.
 5. Tool executes, output is returned to Gemini.
 6. Gemini synthesizes the final response or iterates.

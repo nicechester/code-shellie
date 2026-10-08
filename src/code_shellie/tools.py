@@ -3,6 +3,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from .mcp_client import get_manager
+
 def read_file(file_path: str) -> str:
     """Read contents of a file."""
     try:
@@ -140,6 +142,9 @@ TOOL_DECLARATIONS = GEMINI_TOOLS
 TOOL_MAP = TOOL_FUNCTIONS
 
 def execute_tool(name: str, args: dict) -> str:
+    manager = get_manager()
+    if manager.has_tool(name):
+        return manager.call(name, args)
     if name not in TOOL_MAP:
         return f"Error: Tool '{name}' not found."
     try:

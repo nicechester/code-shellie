@@ -21,6 +21,15 @@ def save_config(api_key: str, model_name: str):
     os.environ["GEMINI_API_KEY"] = api_key
     os.environ["GEMINI_MODEL"] = model_name
 
+def save_model(model_name: str):
+    """Update GEMINI_MODEL in ~/.config/shellie-code/.env, keeping the other settings."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    lines = ENV_PATH.read_text().splitlines() if ENV_PATH.exists() else []
+    lines = [line for line in lines if not line.startswith("GEMINI_MODEL=")]
+    lines.append(f"GEMINI_MODEL={model_name}")
+    ENV_PATH.write_text("\n".join(lines) + "\n")
+    os.environ["GEMINI_MODEL"] = model_name
+
 def get_api_key() -> str:
     load_environment()
     return os.getenv("GEMINI_API_KEY", "")

@@ -8,6 +8,7 @@ from .config import get_api_key, get_model_name
 from .tools import TOOL_DECLARATIONS, execute_tool
 from .context import load_contexts
 from .mentions import expand_mentions
+from .mcp_client import get_manager
 
 console = Console()
 
@@ -42,7 +43,7 @@ class Agent:
             model=self.model,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_instruction,
-                tools=[TOOL_DECLARATIONS],
+                tools=[TOOL_DECLARATIONS, *get_manager().tool_declarations()],
                 temperature=0.2,
             )
         )
