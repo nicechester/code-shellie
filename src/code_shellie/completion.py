@@ -13,6 +13,7 @@ SLASH_COMMANDS = {
     "/context": "Show current context usage",
     "/clear": "Clear the terminal screen",
     "/reset": "Reset conversation history / chat session",
+    "/copy": "Copy the last answer to the clipboard",
     "/exit": "Exit the REPL",
     "/quit": "Exit the REPL",
 }

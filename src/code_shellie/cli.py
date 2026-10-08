@@ -5,14 +5,31 @@ import click
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import merge_completers
 from prompt_toolkit.formatted_text import ANSI
+from prompt_toolkit.key_binding import KeyBindings
 from rich.console import Console
 from .config import get_api_key, get_model_name, save_model
 from .setup import run_setup
 from .core import Agent
+from .clipboard import copy_to_clipboard
 from .completion import MentionCompleter, SlashCompleter
 from .mcp_client import get_manager
 
 console = Console()
+
+def _repl_key_bindings() -> KeyBindings:
+    """Enter submits; Alt+Enter and Ctrl+J insert a newline. Pasted text is inserted as-is, so it never submits early."""
+    bindings = KeyBindings()
+
+    @bindings.add("enter")
+    def _submit(event):
+        event.current_buffer.validate_and_handle()
+
+    @bindings.add("escape", "enter")
+    @bindings.add("c-j")
+    def _newline(event):
+        event.current_buffer.insert_text("\n")
+
+    return bindings
 
 @click.command()
 @click.argument("prompt", required=False)
@@ -56,10 +73,17 @@ def main(prompt):
 
     # Interactive REPL mode
     console.print("[bold cyan]Welcome to Code Shellie (Interactive REPL)[/bold cyan]")
-    console.print("Type your instructions, '!command' to run shell, '/setup' to reconfigure, or 'exit'/'/exit' to quit.\n")
+    console.print("Type your instructions, '!command' to run shell, '/setup' to reconfigure, or 'exit'/'/exit' to quit.")
+    console.print("Enter submits; Alt+Enter or Ctrl+J adds a newline. Pasted multi-line text stays in one prompt.\n")
 
     completer = merge_completers([SlashCompleter(), MentionCompleter()])
-    session = PromptSession(completer=completer, complete_while_typing=True)
+    session = PromptSession(
+        completer=completer,
+        complete_while_typing=True,
+        multiline=True,
+        key_bindings=_repl_key_bindings(),
+        prompt_continuation=lambda width, line, wrap: ANSI("\x1b[1;32m...\x1b[0m "),
+    )
     while True:
         try:
             user_input = session.prompt(ANSI("\x1b[1;32mcodesh>\x1b[0m ")).strip()
@@ -76,6 +100,7 @@ def main(prompt):
                 console.print("  [cyan]/context[/cyan] - Show current context usage")
                 console.print("  [cyan]/clear[/cyan]   - Clear the terminal screen")
                 console.print("  [cyan]/reset[/cyan]   - Reset conversation history / chat session")
+                console.print("  [cyan]/copy[/cyan]    - Copy the last answer to the clipboard")
                 console.print("  [cyan]!command[/cyan] - Run a shell command directly")
                 console.print("  [cyan]@path[/cyan]    - Attach a file or directory listing to your message")
                 console.print("  [cyan]exit/quit, /exit, /quit[/cyan] - Exit the REPL")
@@ -93,6 +118,14 @@ def main(prompt):
             if user_input == "/reset":
                 agent.reset_chat()
                 console.print("[green]Conversation history reset.[/green]")
+                continue
+            if user_input == "/copy":
+                if not agent.last_answer:
+                    console.print("[yellow]No answer to copy yet.[/yellow]")
+                elif tool := copy_to_clipboard(agent.last_answer):
+                    console.print(f"[green]Copied the last answer to the clipboard ({tool}).[/green]")
+                else:
+                    console.print("[red]No clipboard tool found. Install wl-clipboard, xclip, or xsel.[/red]")
                 continue
             if user_input == "/setup":
                 run_setup()
