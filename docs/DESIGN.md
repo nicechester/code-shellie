@@ -1,0 +1,62 @@
+# Code Shellie — Architectural Design Document
+
+## 1. Overview
+`codesh` is an autonomous, Gemini-powered coding agent inspired by Claude Code. It runs primarily in the developer's local terminal (CLI) with support for remote access (e.g., Telegram bots) and interactive approval prompts. By leveraging Gemini's massive context window, it can ingest entire codebases, reason about complex refactoring and bug fixing, and execute tools securely on the host machine.
+
+---
+
+## 2. Core Architecture & Project Structure
+Standard Python project layout located at `~/src/shellie-code`:
+
+```
+shellie-code/
+├── pyproject.toml
+├── README.md
+├── DESIGN.md
+├── src/
+│   └── code_shellie/
+│       ├── __init__.py
+│       ├── core.py       # Gemini Agent Loop & Tool execution engine
+│       ├── tools.py      # File I/O, Shell execution, Git operations
+│       ├── cli.py        # Terminal interface (Rich, Prompt Toolkit)
+│       └── remote.py     # Telegram bot bridge for remote access & inline approvals
+└── tests/
+    ├── __init__.py
+    └── test_core.py
+```
+
+---
+
+## 3. Component Details
+
+### 3.1 `tools.py` (Tool Definitions)
+The agent interacts with the filesystem and OS via defined function calling tools:
+- `read_file(path: str)`: Reads file contents with line numbers.
+- `write_file(path: str, content: str)`: Creates or overwrites files.
+- `edit_file(path: str, old_str: str, new_str: str)`: Performs precise string replacements.
+- `run_shell(command: str)`: Executes safe shell commands (e.g., `pytest`, `npm test`, `git status`).
+- `git_diff()`: Returns unstaged and staged git changes.
+
+### 3.2 `core.py` (Agent Loop)
+- Manages conversation history and state.
+- Sends prompts and conversation history to the Gemini API (`google-genai` SDK).
+- Handles `FUNCTION_CALL` responses, executing the requested tool via `tools.py`, and feeding results back to Gemini.
+- Supports an **Approval Hook** before executing destructive tools (like `write_file` or `run_shell`).
+
+### 3.3 `cli.py` (Terminal Interface)
+- Built using `click`, `rich`, and `prompt_toolkit`.
+- Provides streaming output, syntax highlighting, and interactive prompts (`[Y/n]` confirmations).
+
+### 3.4 `remote.py` (Telegram Bridge)
+- Optional background bridge using `python-telegram-bot`.
+- Sends notifications and **Inline Keyboards** (`[Approve]`, `[Reject]`) to the user's mobile device when the agent needs permission for critical operations.
+
+---
+
+## 4. Execution Flow
+1. User invokes `codesh "Fix the bug in main.py"` in the terminal.
+2. `core.py` initializes context (including git status and directory structure) and queries Gemini.
+3. Gemini decides to call `read_file("src/main.py")`.
+4. `cli.py` (or `remote.py` if remote mode is active) displays the planned tool call and asks for confirmation if required.
+5. Tool executes, output is returned to Gemini.
+6. Gemini synthesizes the final response or iterates.

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "code-shellie"
+version = "0.1.0"
+description = "Gemini-powered coding agent inspired by Claude Code and Shellie architecture"
+readme = "DESIGN.md"
+requires-python = ">=3.10"
+dependencies = [
+    "google-genai>=1.0.0",
+    "rich>=13.0.0",
+    "click>=8.0.0",
+    "prompt_toolkit>=3.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+codesh = "code_shellie.cli:main"
