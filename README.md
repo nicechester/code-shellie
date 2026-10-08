@@ -77,6 +77,18 @@ Run `codesh` with no arguments. You get a `codesh>` prompt. Type an instruction 
 
 The conversation is kept for the whole session, so follow-up requests can refer to earlier ones.
 
+#### Multi-line prompts and copy
+
+| Key | Action |
+|---|---|
+| `Enter` | Submit the prompt |
+| `Alt+Enter` or `Ctrl+J` | Insert a newline without submitting |
+| Paste | A pasted multi-line block stays in one prompt and is not submitted line by line. Review it, then press `Enter` |
+
+The prompt area grows to fit the input, and arrow keys and editing work across lines.
+
+To copy the agent's last answer, type `/copy`. It sends the answer's Markdown source (without the footer) to the system clipboard using the first available tool: `pbcopy` (macOS), `wl-copy` (Wayland), `xclip`, or `xsel` (X11). If none is installed, it prints a message and nothing is copied.
+
 Completion is available as you type:
 
 - Type `/` to list slash commands, or `/mc` to narrow it to `/mcp` (see [Slash commands](#slash-commands)).
@@ -104,6 +116,7 @@ Input that starts with `/` is a command. It never goes to the model.
 | `/setup` | REPL, one-shot | Change the Gemini API key and model name |
 | `/model` | REPL | Show the current model. `/model <name>` switches to that model and saves it |
 | `/mcp` | REPL | Show configured MCP servers, their connection status, and their tools |
+| `/copy` | REPL | Copy the last answer to the system clipboard |
 | `/exit`, `/quit` | REPL | Leave the REPL |
 
 Any other input that starts with `/` prints `no such command: /<name>` immediately and does nothing else. Nothing is sent to the model, so a typo costs no API quota.

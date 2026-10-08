@@ -64,6 +64,7 @@ class Agent:
         )
         self.prompt_token_count = 0
         self.total_token_count = 0
+        self.last_answer = ""
         self.model_limit = self._get_model_limit()
 
     def reset_chat(self):
@@ -147,6 +148,7 @@ class Agent:
                     )
             else:
                 if response.text:
+                    self.last_answer = response.text
                     console.print(f"\n[bold green]Code Shellie:[/bold green]\n")
                     console.print(Markdown(response.text))
                     console.print()
