@@ -1,11 +1,12 @@
 from pathlib import Path
 
 from prompt_toolkit.completion import Completer, Completion
+from .skills import list_skills
 
 MAX_SUGGESTIONS = 200
 
-# Slash commands handled in cli.py, with the description shown beside each suggestion.
-SLASH_COMMANDS = {
+# Built-in slash commands handled in cli.py, with the description shown beside each suggestion.
+BASE_SLASH_COMMANDS = {
     "/help": "Show available commands",
     "/setup": "Reconfigure Gemini API key and model",
     "/model": "Show or change the Gemini model",
@@ -14,18 +15,25 @@ SLASH_COMMANDS = {
     "/clear": "Clear the terminal screen",
     "/reset": "Reset conversation history / chat session",
     "/copy": "Copy the last answer to the clipboard",
+    "/skills": "List skills and whether each is enabled",
+    "/skill": "Enable or disable a skill: /skill enable|disable <name>",
     "/exit": "Exit the REPL",
     "/quit": "Exit the REPL",
 }
 
 class SlashCompleter(Completer):
-    """Suggests slash commands while the input is a single word starting with "/"."""
+    """Suggests slash commands and skill names while the input is a single word starting with "/"."""
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
         if not text.startswith("/") or any(c.isspace() for c in text):
             return
-        for command, description in SLASH_COMMANDS.items():
+
+        # Skills go first: the completion menu shows only a few rows before scrolling
+        skill_commands = {f"/{name}": f"skill: {desc}" for name, desc in list_skills().items()}
+        slash_commands = {**skill_commands, **BASE_SLASH_COMMANDS}
+
+        for command, description in slash_commands.items():
             if command.startswith(text):
                 yield Completion(
                     command,

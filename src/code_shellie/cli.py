@@ -14,8 +14,21 @@ from .core import Agent
 from .clipboard import copy_to_clipboard
 from .completion import MentionCompleter, SlashCompleter
 from .mcp_client import get_manager, shutdown_mcp
+from .skills import disable_skill, enable_skill, enabled_skills, list_skills
+from rich.markup import escape
 
 console = Console()
+
+def _print_skills():
+    skills = list_skills()
+    if not skills:
+        console.print("No skills installed. Add one at [bold]~/.config/shellie-code/skills/<name>/SKILL.md[/bold].")
+        return
+    enabled = set(enabled_skills())
+    console.print("[bold yellow]Skills:[/bold yellow]")
+    for name, description in skills.items():
+        state = "[green]on[/green] " if name in enabled else "[dim]off[/dim]"
+        console.print(f"  {state} [cyan]/{name}[/cyan] - {escape(description)}")
 
 def _repl_key_bindings() -> KeyBindings:
     """Enter submits; Alt+Enter and Ctrl+J insert a newline. Pasted text is inserted as-is, so it never submits early."""
@@ -112,6 +125,9 @@ def run(prompt):
                 console.print("  [cyan]/clear[/cyan]   - Clear the terminal screen")
                 console.print("  [cyan]/reset[/cyan]   - Reset conversation history / chat session")
                 console.print("  [cyan]/copy[/cyan]    - Copy the last answer to the clipboard")
+                console.print("  [cyan]/skills[/cyan]  - List skills and whether each is enabled")
+                console.print("  [cyan]/skill enable|disable <name>[/cyan] - Turn a skill on or off")
+                console.print("  [cyan]/<skill>[/cyan] - Enable a skill by name")
                 console.print("  [cyan]!command[/cyan] - Run a shell command directly")
                 console.print("  [cyan]@path[/cyan]    - Attach a file or directory listing to your message")
                 console.print("  [cyan]exit/quit, /exit, /quit[/cyan] - Exit the REPL")
@@ -152,10 +168,42 @@ def run(prompt):
                 agent = Agent() # re-init so the new model takes effect
                 console.print(f"Model set to [bold]{name}[/bold] (saved). Conversation history was reset.")
                 continue
+            if user_input == "/skills":
+                _print_skills()
+                continue
+            if user_input == "/skill" or user_input.startswith("/skill "):
+                parts = user_input.split()
+                if len(parts) != 3 or parts[1] not in ("enable", "disable"):
+                    console.print("Usage: /skill enable <name> or /skill disable <name>. See /skills.")
+                    continue
+                action, name = parts[1], parts[2]
+                if action == "enable":
+                    if not enable_skill(name):
+                        console.print(f"[red]No skill named {escape(name)}. See /skills.[/red]")
+                        continue
+                    agent.refresh_skills()
+                    console.print(f"Skill [cyan]/{escape(name)}[/cyan] enabled. Conversation history was reset.")
+                else:
+                    if not disable_skill(name):
+                        console.print(f"Skill [cyan]/{escape(name)}[/cyan] is not enabled.")
+                        continue
+                    agent.refresh_skills()
+                    console.print(f"Skill [cyan]/{escape(name)}[/cyan] disabled. Conversation history was reset.")
+                continue
             if user_input.startswith("!"):
                 cmd = user_input[1:].strip()
                 subprocess.run(cmd, shell=True)
                 continue
+            skill_name, _, skill_args = user_input[1:].partition(" ")
+            if user_input.startswith("/") and skill_name in list_skills():
+                # Typing /<skill> [args] enables the skill if needed, then runs it as this turn's request
+                if skill_name not in enabled_skills():
+                    enable_skill(skill_name)
+                    agent.refresh_skills()
+                    console.print(f"Skill [cyan]/{escape(skill_name)}[/cyan] enabled. Conversation history was reset.")
+                user_input = f"Follow the /{skill_name} skill instructions in your system prompt."
+                if skill_args.strip():
+                    user_input += f" Arguments: {skill_args.strip()}"
             if user_input.startswith("/"):
                 console.print(f"[red]no such command: {user_input.split()[0]}[/red]")
                 continue

@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 def load_contexts() -> str:
-    """Load system, project, and session contexts."""
+    """Load system and project contexts. Enabled skills are added by the agent."""
     context_parts = []
 
     # 1. System-wide context (~/.config/shellie-code/SYSTEM.md)
