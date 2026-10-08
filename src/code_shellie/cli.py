@@ -65,12 +65,17 @@ def main(prompt):
                 console.print("  [cyan]/setup[/cyan]   - Reconfigure Gemini API credentials and model")
                 console.print("  [cyan]/model[/cyan]   - Show or change the Gemini model (/model <name>)")
                 console.print("  [cyan]/mcp[/cyan]     - Show configured MCP servers and their tools")
+                console.print("  [cyan]/context[/cyan] - Show current context usage")
                 console.print("  [cyan]!command[/cyan] - Run a shell command directly")
                 console.print("  [cyan]@path[/cyan]    - Attach a file or directory listing to your message")
                 console.print("  [cyan]exit/quit, /exit, /quit[/cyan] - Exit the REPL")
                 continue
             if user_input == "/mcp":
                 get_manager().print_status()
+                continue
+            if user_input == "/context":
+                console.print(f"Context: {agent.prompt_token_count:,} / {agent.model_limit:,} tokens")
+                console.print(f"Session total: {agent.total_token_count:,} tokens")
                 continue
             if user_input == "/setup":
                 run_setup()

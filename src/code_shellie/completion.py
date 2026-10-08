@@ -10,6 +10,7 @@ SLASH_COMMANDS = {
     "/setup": "Reconfigure Gemini API key and model",
     "/model": "Show or change the Gemini model",
     "/mcp": "Show configured MCP servers and their tools",
+    "/context": "Show current context usage",
     "/exit": "Exit the REPL",
     "/quit": "Exit the REPL",
 }

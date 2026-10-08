@@ -47,6 +47,16 @@ class Agent:
                 temperature=0.2,
             )
         )
+        self.prompt_token_count = 0
+        self.total_token_count = 0
+        self.model_limit = self._get_model_limit()
+
+    def _get_model_limit(self):
+        try:
+            model_info = self.client.models.get(model=self.model)
+            return model_info.input_token_limit
+        except Exception:
+            return None
 
     def _send(self, message):
         """Send a message, following the policy in shellie/docs/gemini_429_observations.md.
@@ -59,7 +69,11 @@ class Agent:
         server_retries = 0
         while True:
             try:
-                return self.chat.send_message(message)
+                response = self.chat.send_message(message)
+                if response.usage_metadata:
+                    self.prompt_token_count = response.usage_metadata.prompt_token_count
+                    self.total_token_count += response.usage_metadata.total_token_count
+                return response
             except errors.APIError as e:
                 if e.code == 429:
                     if "PerDay" in str(e):
@@ -106,4 +120,7 @@ class Agent:
             else:
                 if response.text:
                     console.print(f"\n[bold green]Code Shellie:[/bold green]\n{response.text}\n")
+                    if self.model_limit:
+                        percent = (self.prompt_token_count / self.model_limit) * 100
+                        console.print(f"[dim]ctx {self.prompt_token_count:,} / {self.model_limit:,} ({percent:.1f}%)[/dim]")
                 break

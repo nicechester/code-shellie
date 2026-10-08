@@ -123,7 +123,7 @@ Output appears directly in the terminal. The command's exit status is not report
 
 ### Attaching files with `@`
 
-Put `@` followed by a path anywhere in your message to attach that file's text, or a listing of a directory, to the message sent to the model:
+Put `@` followed by a path anywhere in your message to attach that file's text, or a listing of a directory, to the message sent to the message sent to the model:
 
 ```
 codesh> explain what @src/code_shellie/core.py does
@@ -160,16 +160,18 @@ Code Shellie reads its settings from `~/.config/shellie-code/`. Everything else 
 
 The first time you run `codesh` without an API key, setup starts automatically. You can also run `/setup` at any time.
 
+You can onboard on [Google AI Studio](https://aistudio.google.com/), where anyone can begin using it for free with Google's generous free tier of Flash Lite models (3.5/3.1). Currently, rate limits for Flash Light models are 15 RPM, 250k TPM, and 500 RPD, which are enough to start exploring, and it's easy to switch to a paid subscription later.
+
 Setup asks for:
 
 - **Gemini API Key.** Entered hidden. Press Enter to keep the current key.
-- **Gemini Model Name.** Defaults to `gemini-2.5-flash`.
+- **Gemini Model Name.** Defaults to `gemini-3.5-flash-lite`.
 
 Settings are saved to `~/.config/shellie-code/.env`:
 
 ```
 GEMINI_API_KEY=your-key
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 You can also set these in the environment or in a `.env` file in the directory you run `codesh` from. The environment and the local `.env` are read in addition to the saved file.
