@@ -11,6 +11,8 @@ SLASH_COMMANDS = {
     "/model": "Show or change the Gemini model",
     "/mcp": "Show configured MCP servers and their tools",
     "/context": "Show current context usage",
+    "/clear": "Clear the terminal screen",
+    "/reset": "Reset conversation history / chat session",
     "/exit": "Exit the REPL",
     "/quit": "Exit the REPL",
 }

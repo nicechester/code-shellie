@@ -1,9 +1,13 @@
 import os
 import re
+import subprocess
 import time
+from pathlib import Path
 from google import genai
 from google.genai import errors, types
 from rich.console import Console
+from rich.markdown import Markdown
+from rich.markup import escape
 from .config import get_api_key, get_model_name
 from .tools import TOOL_DECLARATIONS, execute_tool
 from .context import load_contexts
@@ -11,6 +15,17 @@ from .mentions import expand_mentions
 from .mcp_client import get_manager
 
 console = Console()
+
+def _git_branch(cwd: Path) -> str:
+    """Current git branch for cwd, or '' outside a repository or on error."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=cwd, capture_output=True, text=True, timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
 
 DEFAULT_RPM_COOLDOWN = 60
 _5XX_BACKOFF_SEC = (1, 2, 4)
@@ -50,6 +65,19 @@ class Agent:
         self.prompt_token_count = 0
         self.total_token_count = 0
         self.model_limit = self._get_model_limit()
+
+    def reset_chat(self):
+        """Reset the conversation chat session while keeping client/model configuration."""
+        self.chat = self.client.chats.create(
+            model=self.model,
+            config=types.GenerateContentConfig(
+                system_instruction=self.system_instruction,
+                tools=[TOOL_DECLARATIONS, *get_manager().tool_declarations()],
+                temperature=0.2,
+            )
+        )
+        self.prompt_token_count = 0
+        self.total_token_count = 0
 
     def _get_model_limit(self):
         try:
@@ -119,8 +147,25 @@ class Agent:
                     )
             else:
                 if response.text:
-                    console.print(f"\n[bold green]Code Shellie:[/bold green]\n{response.text}\n")
-                    if self.model_limit:
-                        percent = (self.prompt_token_count / self.model_limit) * 100
-                        console.print(f"[dim]ctx {self.prompt_token_count:,} / {self.model_limit:,} ({percent:.1f}%)[/dim]")
+                    console.print(f"\n[bold green]Code Shellie:[/bold green]\n")
+                    console.print(Markdown(response.text))
+                    console.print()
+                    console.print(f"[dim]{self._footer()}[/dim]")
                 break
+
+    def _footer(self) -> str:
+        """Status line under each answer: model, working directory, git branch, and context usage."""
+        cwd = Path.cwd()
+        home = str(Path.home())
+        path = str(cwd)
+        if path == home or path.startswith(home + os.sep):
+            path = "~" + path[len(home):]
+        branch = _git_branch(cwd)
+        where = f"{escape(path)} ({escape(branch)})" if branch else escape(path)
+
+        if self.model_limit:
+            percent = (self.prompt_token_count / self.model_limit) * 100
+            ctx = f"ctx {self.prompt_token_count:,} / {self.model_limit:,} ({percent:.1f}%)"
+        else:
+            ctx = f"ctx {self.prompt_token_count:,}"
+        return f"{where} | {escape(self.model)} | {ctx}"

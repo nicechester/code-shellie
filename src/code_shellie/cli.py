@@ -1,3 +1,4 @@
+import os
 import subprocess
 import sys
 import click
@@ -33,6 +34,13 @@ def main(prompt):
         if prompt == "/setup":
             run_setup()
             return
+        if prompt == "/clear":
+            console.clear()
+            return
+        if prompt == "/reset":
+            agent.reset_chat()
+            console.print("[green]Conversation history reset.[/green]")
+            return
         if prompt.startswith("!"):
             # Execute shell command directly
             cmd = prompt[1:].strip()
@@ -66,6 +74,8 @@ def main(prompt):
                 console.print("  [cyan]/model[/cyan]   - Show or change the Gemini model (/model <name>)")
                 console.print("  [cyan]/mcp[/cyan]     - Show configured MCP servers and their tools")
                 console.print("  [cyan]/context[/cyan] - Show current context usage")
+                console.print("  [cyan]/clear[/cyan]   - Clear the terminal screen")
+                console.print("  [cyan]/reset[/cyan]   - Reset conversation history / chat session")
                 console.print("  [cyan]!command[/cyan] - Run a shell command directly")
                 console.print("  [cyan]@path[/cyan]    - Attach a file or directory listing to your message")
                 console.print("  [cyan]exit/quit, /exit, /quit[/cyan] - Exit the REPL")
@@ -76,6 +86,13 @@ def main(prompt):
             if user_input == "/context":
                 console.print(f"Context: {agent.prompt_token_count:,} / {agent.model_limit:,} tokens")
                 console.print(f"Session total: {agent.total_token_count:,} tokens")
+                continue
+            if user_input == "/clear":
+                console.clear()
+                continue
+            if user_input == "/reset":
+                agent.reset_chat()
+                console.print("[green]Conversation history reset.[/green]")
                 continue
             if user_input == "/setup":
                 run_setup()
