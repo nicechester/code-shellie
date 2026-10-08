@@ -6,13 +6,14 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import merge_completers
 from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyBindings
+from google.genai import errors
 from rich.console import Console
 from .config import get_api_key, get_model_name, save_model
 from .setup import run_setup
 from .core import Agent
 from .clipboard import copy_to_clipboard
 from .completion import MentionCompleter, SlashCompleter
-from .mcp_client import get_manager
+from .mcp_client import get_manager, shutdown_mcp
 
 console = Console()
 
@@ -35,6 +36,13 @@ def _repl_key_bindings() -> KeyBindings:
 @click.argument("prompt", required=False)
 def main(prompt):
     """Code Shellie: Your AI Coding Agent"""
+    try:
+        run(prompt)
+    finally:
+        # Close MCP sessions while threads still work; atexit is too late for that
+        shutdown_mcp()
+
+def run(prompt):
     api_key = get_api_key()
     if not api_key:
         console.print("[yellow]No API key found. Entering setup mode...[/yellow]")
@@ -68,7 +76,10 @@ def main(prompt):
             console.print(f"[red]no such command: {prompt.split()[0]}[/red]")
             return
 
-        agent.run_turn(prompt)
+        try:
+            agent.run_turn(prompt)
+        except errors.APIError as e:
+            console.print(f"[red]Request failed: {e.message or e}[/red]")
         return
 
     # Interactive REPL mode
@@ -149,7 +160,12 @@ def main(prompt):
                 console.print(f"[red]no such command: {user_input.split()[0]}[/red]")
                 continue
 
-            agent.run_turn(user_input)
+            try:
+                agent.run_turn(user_input)
+            except Exception as e:
+                # Keep the session and its history; the user can retry the prompt
+                message = getattr(e, "message", None) or e
+                console.print(f"[red]Request failed: {message}[/red]")
         except (KeyboardInterrupt, EOFError):
             console.print("\n[cyan]Goodbye![/cyan]")
             break

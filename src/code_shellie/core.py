@@ -1,5 +1,4 @@
 import os
-import re
 import subprocess
 import time
 from pathlib import Path
@@ -27,13 +26,9 @@ def _git_branch(cwd: Path) -> str:
         return ""
     return result.stdout.strip() if result.returncode == 0 else ""
 
-DEFAULT_RPM_COOLDOWN = 60
+RATE_LIMIT_COOLDOWN_SEC = 60
+RATE_LIMIT_RETRIES = 3
 _5XX_BACKOFF_SEC = (1, 2, 4)
-
-def _retry_delay(error) -> int:
-    """Seconds to wait from the API's retry hint, with a 1s margin."""
-    match = re.search(r"retry(?:Delay': '| in )(\d+(?:\.\d+)?)s", str(error))
-    return int(float(match.group(1))) + 1 if match else DEFAULT_RPM_COOLDOWN
 
 class Agent:
     def __init__(self):
@@ -90,11 +85,12 @@ class Agent:
     def _send(self, message):
         """Send a message, following the policy in shellie/docs/gemini_429_observations.md.
 
-        RPM: sleep the server's retryDelay, retry once, then give up.
+        Per-minute 429 (RPM or input tokens): always cool down for RATE_LIMIT_COOLDOWN_SEC, up to RATE_LIMIT_RETRIES times.
         RPD: give up (no fallback model here).
         5xx: retry with exponential backoff (1s, 2s, 4s), then give up.
+        Giving up raises APIError, which the REPL catches so the session continues.
         """
-        rpm_retried = False
+        rate_limit_retries = 0
         server_retries = 0
         while True:
             try:
@@ -106,15 +102,17 @@ class Agent:
             except errors.APIError as e:
                 if e.code == 429:
                     if "PerDay" in str(e):
-                        console.print("[bold red]Daily quota (RPD) reached. Stopping.[/bold red]")
+                        console.print("[bold red]Daily quota (RPD) reached. Try again tomorrow.[/bold red]")
                         raise
-                    if rpm_retried:
-                        console.print("[bold red]Per-minute quota hit again after cooldown. Stopping.[/bold red]")
+                    if rate_limit_retries >= RATE_LIMIT_RETRIES:
+                        console.print(f"[bold red]Still rate limited after {RATE_LIMIT_RETRIES} cooldowns. Stopping this turn.[/bold red]")
                         raise
-                    rpm_retried = True
-                    delay = _retry_delay(e)
-                    console.print(f"[yellow]Rate limit (RPM) hit. Cooling down for {delay}s, then retrying once...[/yellow]")
-                    time.sleep(delay)
+                    rate_limit_retries += 1
+                    console.print(
+                        f"[yellow]Rate limit hit. Cooling down for {RATE_LIMIT_COOLDOWN_SEC}s "
+                        f"(attempt {rate_limit_retries}/{RATE_LIMIT_RETRIES})...[/yellow]"
+                    )
+                    time.sleep(RATE_LIMIT_COOLDOWN_SEC)
                 elif e.code >= 500 and server_retries < len(_5XX_BACKOFF_SEC):
                     delay = _5XX_BACKOFF_SEC[server_retries]
                     server_retries += 1
@@ -130,22 +128,27 @@ class Agent:
         while True:
             # Check if model wants to call functions
             if response.function_calls:
+                # Run every call in this batch, then send all results back in one request
+                parts = []
                 for function_call in response.function_calls:
                     name = function_call.name
                     args = function_call.args
                     console.print(f"[yellow]⚡ Executing tool: {name}({args})[/yellow]")
-                    
+
                     # Execute tool
                     result = execute_tool(name, args)
                     console.print(f"[dim]Result: {str(result)[:200]}...[/dim]")
-                    
-                    # Send tool output back to chat
-                    response = self._send(
-                        types.Part.from_function_response(
-                            name=name,
-                            response={"result": result}
+
+                    parts.append(
+                        types.Part(
+                            function_response=types.FunctionResponse(
+                                id=function_call.id,
+                                name=name,
+                                response={"result": result}
+                            )
                         )
                     )
+                response = self._send(parts)
             else:
                 if response.text:
                     self.last_answer = response.text

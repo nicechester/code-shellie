@@ -193,3 +193,11 @@ def get_manager() -> MCPManager:
         _manager = MCPManager(servers).start() if servers else MCPManager({})
         atexit.register(_manager.close)
     return _manager
+
+
+def shutdown_mcp():
+    """Close MCP sessions now, while the interpreter can still run their teardown. Safe to call more than once."""
+    global _manager
+    if _manager is not None:
+        _manager.close()
+        _manager = None
