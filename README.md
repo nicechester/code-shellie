@@ -158,10 +158,11 @@ When asked to test Python code, ...
 Create the folder and file, then:
 
 - `/skills` lists every skill and marks the enabled ones `on`.
-- `/python-test` (or `/skill enable python-test`) enables the skill. Its instructions are added to the system prompt.
+- `/python-test` (or `/skill enable python-test`) enables the skill. The system prompt lists it by name and description.
+- Typing `/python-test` with a request sends the full `SKILL.md` instructions with that message. The instructions apply to that turn only.
 - `/skill disable python-test` turns it off.
 
-Enabled skills are saved in `~/.config/shellie-code/enabled_skills.json`, so they stay on across sessions. Enabling or disabling a skill starts a new conversation, the same as `/model`. Skills are read when the agent starts, so changing a `SKILL.md` file takes effect after you enable or disable the skill again or restart `codesh`.
+Enabled skills are recorded in `~/.config/shellie-code/skills.json`, with each skill's description and the path to its `SKILL.md`. They stay on across sessions. Enabling or disabling a skill starts a new conversation, the same as `/model`. Older installs that have `enabled_skills.json` keep their enabled skills until the first change is saved to `skills.json`.
 
 Skills only change the instructions. They do not add tools.
 

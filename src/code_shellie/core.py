@@ -168,16 +168,16 @@ class Agent:
             else:
                 raise GeminiError(status, message, body)
 
-    def run_turn(self, prompt: str):
+    def run_turn(self, prompt: str, label: str = None):
         """Run one user request to completion. On failure, the turn is removed from history so the session stays valid.
-        A completed turn is saved to the session file."""
+        A completed turn is saved to the session file, described by label (what the user typed) or else the prompt."""
         start = len(self.history)
         try:
             self._run_turn(prompt)
         except Exception:
             del self.history[start:]
             raise
-        self._save_session(prompt)
+        self._save_session(label or prompt)
 
     def _run_turn(self, prompt: str):
         if self.verbose:

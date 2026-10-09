@@ -13,7 +13,7 @@ from . import gemini
 from .gemini import GeminiError
 from .line_editor import LineEditor
 from .mcp_client import get_manager, shutdown_mcp
-from .skills import disable_skill, enable_skill, enabled_skills, list_skills
+from .skills import disable_skill, enable_skill, enabled_skills, list_skills, skill_instructions
 from .term import bold, cyan, dim, green, red, yellow
 
 CLEAR_SCREEN = "\x1b[2J\x1b[H"
@@ -250,21 +250,27 @@ def run(prompt, resume=None):
                 subprocess.run(cmd, shell=True)
                 continue
             skill_name, _, skill_args = user_input[1:].partition(" ")
+            label = None
             if user_input.startswith("/") and skill_name in list_skills():
                 # Typing /<skill> [args] enables the skill if needed, then runs it as this turn's request
                 if skill_name not in enabled_skills():
                     enable_skill(skill_name)
                     agent.refresh_skills()
                     print(f"Skill {cyan('/' + skill_name)} enabled. Conversation history was reset.")
-                user_input = f"Follow the /{skill_name} skill instructions in your system prompt."
+                instructions = skill_instructions(skill_name)
+                if instructions is None:
+                    print(red(f"Cannot read skill {skill_name}. See /skills."))
+                    continue
+                label = user_input
+                user_input = f"Follow these /{skill_name} skill instructions:\n\n{instructions}"
                 if skill_args.strip():
-                    user_input += f" Arguments: {skill_args.strip()}"
+                    user_input += f"\n\nArguments: {skill_args.strip()}"
             if user_input.startswith("/"):
                 print(red(f"no such command: {user_input.split()[0]}"))
                 continue
 
             try:
-                agent.run_turn(user_input)
+                agent.run_turn(user_input, label=label)
             except Exception as e:
                 # Keep the session and its history; the user can retry the prompt
                 print(red(f"Request failed: {getattr(e, 'message', None) or e}"))

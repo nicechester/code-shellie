@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from code_shellie import skills
@@ -39,15 +41,39 @@ def test_enable_unknown_skill_fails(home):
 def test_disable_not_enabled_fails(home):
     assert not skills.disable_skill("docs")
 
-def test_enabled_skills_prompt_includes_only_enabled(home):
+def test_enabled_skills_prompt_lists_only_enabled_by_description(home):
     skills.enable_skill("python-test")
     prompt = skills.enabled_skills_prompt()
-    assert "## Skill: /python-test" in prompt
-    assert "Body of python-test." in prompt
+    assert "- /python-test: Run and write Python tests" in prompt
+    assert "Body of python-test." not in prompt
     assert "docs" not in prompt
 
     skills.disable_skill("python-test")
     assert skills.enabled_skills_prompt() == ""
+
+def test_skill_instructions_returns_full_skill_md(home):
+    assert skills.skill_instructions("docs") == "description: Write documentation\n\nBody of docs."
+    assert skills.skill_instructions("nope") is None
+
+def test_registry_records_description_and_path(home):
+    skills.enable_skill("docs")
+    registry = json.loads((home / ".config" / "shellie-code" / "skills.json").read_text(encoding="utf-8"))
+    assert registry == {
+        "docs": {
+            "description": "Write documentation",
+            "path": str(home / ".config" / "shellie-code" / "skills" / "docs" / "SKILL.md"),
+        }
+    }
+
+def test_legacy_enabled_file_still_works(home):
+    config = home / ".config" / "shellie-code"
+    (config / "enabled_skills.json").write_text(json.dumps(["docs"]), encoding="utf-8")
+    assert skills.enabled_skills() == ["docs"]
+    assert "- /docs: Write documentation" in skills.enabled_skills_prompt()
+
+    skills.disable_skill("docs")
+    assert skills.enabled_skills() == []
+    assert (config / "skills.json").is_file()
 
 def test_agent_instruction_follows_enabled_skills(home):
     agent = Agent.__new__(Agent)  # skip __init__: it needs an API key and a live client
@@ -55,7 +81,8 @@ def test_agent_instruction_follows_enabled_skills(home):
     assert agent._build_instruction() == "base instruction"
 
     skills.enable_skill("docs")
-    assert "Body of docs." in agent._build_instruction()
+    assert "- /docs: Write documentation" in agent._build_instruction()
+    assert "Body of docs." not in agent._build_instruction()
 
     skills.disable_skill("docs")
     assert agent._build_instruction() == "base instruction"
