@@ -127,8 +127,8 @@ class Agent:
                         raise
                     rate_limit_retries += 1
                     console.print(
-                        f"[yellow]Rate limit hit. Cooling down for {RATE_LIMIT_COOLDOWN_SEC}s "
-                        f"(attempt {rate_limit_retries}/{RATE_LIMIT_RETRIES})...[/yellow]"
+                        f"[yellow]AI is overloaded. Wait a minute "
+                        f"({rate_limit_retries}/{RATE_LIMIT_RETRIES})[/yellow]"
                     )
                     time.sleep(RATE_LIMIT_COOLDOWN_SEC)
                 elif e.code >= 500 and server_retries < len(_5XX_BACKOFF_SEC):
