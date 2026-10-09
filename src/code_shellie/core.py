@@ -1,6 +1,7 @@
 import os
 import subprocess
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from google import genai
 from google.genai import errors, types
@@ -32,6 +33,9 @@ RATE_LIMIT_RETRIES = 3
 _5XX_BACKOFF_SEC = (1, 2, 4)
 
 class Agent:
+    # Compact view by default; the REPL flips this with Ctrl+O. Affects only what is printed, not the chat.
+    verbose = False
+
     def __init__(self):
         api_key = get_api_key()
         if not api_key:
@@ -135,9 +139,16 @@ class Agent:
                 else:
                     raise
 
+    def _waiting(self, label: str):
+        """Animated status while waiting (compact view); a plain line in verbose view."""
+        if self.verbose:
+            console.print(f"[bold blue]{label}[/bold blue]")
+            return nullcontext()
+        return console.status(f"[bold blue]{label}[/bold blue]", spinner="dots")
+
     def run_turn(self, prompt: str):
-        console.print(f"[bold blue]Thinking...[/bold blue]")
-        response = self._send(expand_mentions(prompt))
+        with self._waiting("thinking..."):
+            response = self._send(expand_mentions(prompt))
 
         while True:
             # Check if model wants to call functions
@@ -147,11 +158,21 @@ class Agent:
                 for function_call in response.function_calls:
                     name = function_call.name
                     args = function_call.args
-                    console.print(f"[yellow]⚡ Executing tool: {name}({args})[/yellow]")
+                    if self.verbose:
+                        console.print(f"[yellow]⚡ Executing tool: {name}({args})[/yellow]")
 
                     # Execute tool
-                    result = execute_tool(name, args)
-                    console.print(f"[dim]Result: {str(result)[:200]}...[/dim]")
+                    with self._waiting("working..."):
+                        result = execute_tool(name, args)
+                    failed = str(result).startswith("Error")
+                    if self.verbose:
+                        console.print(f"[dim]Result: {str(result)[:200]}...[/dim]")
+                    elif failed:
+                        console.print(f"[red]{name} failed: {escape(str(result)[:200])}[/red]")
+                    else:
+                        console.print(f"[dim]{name} called[/dim]")
+                        if name == "write_file":
+                            console.print(f"[dim]{escape(args.get('file_path', ''))} edited[/dim]")
 
                     parts.append(
                         types.Part(
@@ -187,4 +208,5 @@ class Agent:
             ctx = f"ctx {self.prompt_token_count:,} / {self.model_limit:,} ({percent:.1f}%)"
         else:
             ctx = f"ctx {self.prompt_token_count:,}"
-        return f"{where} | {escape(self.model)} | {ctx}"
+        view = "verbose" if self.verbose else "compact"
+        return f"{where} | {escape(self.model)} | {ctx} | {view}"

@@ -73,9 +73,15 @@ Code Shellie has two modes: interactive (the REPL) and one-shot.
 
 ### Interactive mode
 
-Run `codesh` with no arguments. You get a `codesh>` prompt. Type an instruction and press Enter; the agent answers and may run tools along the way. Each tool call is printed as it runs (`⚡ Executing tool: ...`), followed by a truncated result.
+Run `codesh` with no arguments. You get a `codesh>` prompt. Type an instruction and press Enter; the agent answers and may run tools along the way.
 
 The conversation is kept for the whole session, so follow-up requests can refer to earlier ones.
+
+#### Compact and verbose output
+
+By default the output is compact. While the agent works, an animated `thinking...` or `working...` line shows what it is doing. Each finished tool call prints one line (`read_file called`), and a successful `write_file` prints `<path> edited`. Failed tool calls are always shown. The final answer is printed in full.
+
+Press `Ctrl+O` at the prompt to switch to verbose output, which shows each tool's arguments and a truncated result. Press it again to go back to compact. The current view is shown in the footer after each answer. The setting is kept when the model or skills change. The switch works only at the prompt, not while the agent is running a turn.
 
 #### Multi-line prompts and copy
 
@@ -83,6 +89,7 @@ The conversation is kept for the whole session, so follow-up requests can refer 
 |---|---|
 | `Enter` | Submit the prompt |
 | `Alt+Enter` or `Ctrl+J` | Insert a newline without submitting |
+| `Ctrl+O` | Switch between compact and verbose output |
 | Paste | A pasted multi-line block stays in one prompt and is not submitted line by line. Review it, then press `Enter` |
 
 The prompt area grows to fit the input, and arrow keys and editing work across lines.

@@ -92,3 +92,66 @@ def test_rate_limit_gives_up_without_exiting_process(monkeypatch):
     with pytest.raises(errors.APIError):
         agent._send("hi")
     assert agent.chat.calls == 4  # first attempt plus 3 retries
+
+@pytest.fixture
+def compact_view():
+    # verbose is a class-level setting that the REPL toggles; restore it after each test
+    previous = Agent.verbose
+    Agent.verbose = False
+    yield
+    Agent.verbose = previous
+
+def test_compact_view_shows_one_line_per_tool_call(monkeypatch, capsys, compact_view):
+    calls = [SimpleNamespace(id="call-1", name="read_file", args={"file_path": "secret.txt"})]
+    chat = FakeChat([reply(function_calls=calls), reply(text="done")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "secret contents")
+
+    make_agent(chat).run_turn("read it")
+    out = capsys.readouterr().out
+
+    assert "read_file called" in out
+    assert "Executing tool" not in out
+    assert "secret contents" not in out
+
+def test_compact_view_reports_edited_path_after_write_file(monkeypatch, capsys, compact_view):
+    calls = [SimpleNamespace(id="call-1", name="write_file", args={"file_path": "notes/a.md", "content": "x"})]
+    chat = FakeChat([reply(function_calls=calls), reply(text="done")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "Successfully wrote to notes/a.md")
+
+    make_agent(chat).run_turn("write it")
+
+    assert "notes/a.md edited" in capsys.readouterr().out
+
+def test_compact_view_always_shows_failed_tool_calls(monkeypatch, capsys, compact_view):
+    calls = [SimpleNamespace(id="call-1", name="read_file", args={"file_path": "missing"})]
+    chat = FakeChat([reply(function_calls=calls), reply(text="done")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "Error: File 'missing' does not exist.")
+
+    make_agent(chat).run_turn("read it")
+
+    assert "read_file failed" in capsys.readouterr().out
+
+def test_verbose_view_keeps_tool_arguments_and_results(monkeypatch, capsys, compact_view):
+    Agent.verbose = True
+    calls = [SimpleNamespace(id="call-1", name="read_file", args={"file_path": "a.txt"})]
+    chat = FakeChat([reply(function_calls=calls), reply(text="done")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "file body")
+
+    make_agent(chat).run_turn("read it")
+    out = capsys.readouterr().out
+
+    assert "Executing tool: read_file" in out
+    assert "file body" in out
+
+def test_view_does_not_change_what_is_sent_to_model(monkeypatch, compact_view):
+    calls = [SimpleNamespace(id="call-1", name="read_file", args={"file_path": "a"})]
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "body")
+
+    results = []
+    for verbose in (False, True):
+        Agent.verbose = verbose
+        chat = FakeChat([reply(function_calls=calls), reply(text="done")])
+        make_agent(chat).run_turn("read it")
+        results.append(chat.sent[1][0].function_response.response)
+
+    assert results[0] == results[1] == {"result": "body"}

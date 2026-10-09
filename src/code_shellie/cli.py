@@ -3,6 +3,7 @@ import subprocess
 import sys
 import click
 from prompt_toolkit import PromptSession
+from prompt_toolkit.application import run_in_terminal
 from prompt_toolkit.completion import merge_completers
 from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.key_binding import KeyBindings
@@ -30,8 +31,9 @@ def _print_skills():
         state = "[green]on[/green] " if name in enabled else "[dim]off[/dim]"
         console.print(f"  {state} [cyan]/{name}[/cyan] - {escape(description)}")
 
-def _repl_key_bindings() -> KeyBindings:
-    """Enter submits; Alt+Enter and Ctrl+J insert a newline. Pasted text is inserted as-is, so it never submits early."""
+def _repl_key_bindings(toggle_view) -> KeyBindings:
+    """Enter submits; Alt+Enter and Ctrl+J insert a newline. Pasted text is inserted as-is, so it never submits early.
+    Ctrl+O switches between the compact and verbose output views."""
     bindings = KeyBindings()
 
     @bindings.add("enter")
@@ -42,6 +44,11 @@ def _repl_key_bindings() -> KeyBindings:
     @bindings.add("c-j")
     def _newline(event):
         event.current_buffer.insert_text("\n")
+
+    @bindings.add("c-o")
+    def _toggle_view(event):
+        view = toggle_view()
+        run_in_terminal(lambda: console.print(f"[dim]Output view: {view}[/dim]"))
 
     return bindings
 
@@ -98,14 +105,20 @@ def run(prompt):
     # Interactive REPL mode
     console.print("[bold cyan]Welcome to Code Shellie (Interactive REPL)[/bold cyan]")
     console.print("Type your instructions, '!command' to run shell, '/setup' to reconfigure, or 'exit'/'/exit' to quit.")
-    console.print("Enter submits; Alt+Enter or Ctrl+J adds a newline. Pasted multi-line text stays in one prompt.\n")
+    console.print("Enter submits; Alt+Enter or Ctrl+J adds a newline. Pasted multi-line text stays in one prompt.")
+    console.print("Output is compact by default; Ctrl+O at the prompt switches to verbose (tool arguments and results).\n")
+
+    def toggle_view():
+        # Class-level, so the view survives /model, /setup and skill changes that re-create the agent
+        Agent.verbose = not Agent.verbose
+        return "verbose" if Agent.verbose else "compact"
 
     completer = merge_completers([SlashCompleter(), MentionCompleter()])
     session = PromptSession(
         completer=completer,
         complete_while_typing=True,
         multiline=True,
-        key_bindings=_repl_key_bindings(),
+        key_bindings=_repl_key_bindings(toggle_view),
         prompt_continuation=lambda width, line, wrap: ANSI("\x1b[1;32m...\x1b[0m "),
     )
     while True:
@@ -128,6 +141,7 @@ def run(prompt):
                 console.print("  [cyan]/skills[/cyan]  - List skills and whether each is enabled")
                 console.print("  [cyan]/skill enable|disable <name>[/cyan] - Turn a skill on or off")
                 console.print("  [cyan]/<skill>[/cyan] - Enable a skill by name")
+                console.print("  [cyan]Ctrl+O[/cyan]   - Switch between compact and verbose output")
                 console.print("  [cyan]!command[/cyan] - Run a shell command directly")
                 console.print("  [cyan]@path[/cyan]    - Attach a file or directory listing to your message")
                 console.print("  [cyan]exit/quit, /exit, /quit[/cyan] - Exit the REPL")
