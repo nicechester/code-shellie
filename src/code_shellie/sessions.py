@@ -10,10 +10,11 @@ import time
 import uuid
 from pathlib import Path
 
-from .config import CONFIG_DIR
+from .config import CONFIG_DIR, load_environment
 
 SESSIONS_DIR = CONFIG_DIR / "sessions"
 DESCRIPTION_CHARS = 60
+DEFAULT_TTL_HOURS = 24
 _ID_RE = re.compile(r"^[0-9a-f]{8}$")
 
 
@@ -50,8 +51,28 @@ def save(data: dict) -> None:
     os.replace(tmp, path)
 
 
-def load(session_id: str) -> dict:
-    """Read a session file. Raises SessionError with a message the user can act on."""
+def ttl_seconds() -> float:
+    """How long a session may go without a turn before it expires. SESSION_TTL_HOURS, default 24.
+    A value of 0 or less turns expiry off."""
+    load_environment()
+    raw = os.getenv("SESSION_TTL_HOURS", "")
+    try:
+        hours = float(raw) if raw else DEFAULT_TTL_HOURS
+    except ValueError:
+        hours = DEFAULT_TTL_HOURS
+    return hours * 3600 if hours > 0 else 0
+
+
+def is_expired(data: dict, now: float = None) -> bool:
+    ttl = ttl_seconds()
+    if ttl == 0:
+        return False
+    now = time.time() if now is None else now
+    return now - data.get("updated", 0) > ttl
+
+
+def _read(session_id: str) -> dict:
+    """Read and validate a session file, whether or not it has expired."""
     path = _path(session_id)
     if not path.exists():
         raise SessionError(f"No saved session with id {session_id}. See codesh --sessions.")
@@ -62,6 +83,30 @@ def load(session_id: str) -> dict:
     if not isinstance(data, dict) or not isinstance(data.get("history"), list) or data.get("id") != session_id:
         raise SessionError(f"Session {session_id} is not a valid session file.")
     return data
+
+
+def load(session_id: str) -> dict:
+    """Read a session file for resuming. Raises SessionError with a message the user can act on."""
+    data = _read(session_id)
+    if is_expired(data):
+        raise SessionError(f"Session {session_id} expired after {ttl_seconds() / 3600:g} hours without a turn.")
+    return data
+
+
+def purge_expired() -> int:
+    """Delete expired session files. Unreadable files are left alone so the user can see them. Returns the count removed."""
+    if not SESSIONS_DIR.is_dir():
+        return 0
+    removed = 0
+    for path in SESSIONS_DIR.glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict) and is_expired(data):
+            path.unlink(missing_ok=True)
+            removed += 1
+    return removed
 
 
 def delete(session_id: str) -> None:
@@ -79,11 +124,12 @@ def list_sessions() -> list:
     for path in SESSIONS_DIR.glob("*.json"):
         session_id = path.stem
         try:
-            data = load(session_id)
+            data = _read(session_id)
         except SessionError as e:
             rows.append({"id": session_id, "updated": 0, "cwd": "", "description": f"unreadable: {e}"})
             continue
-        rows.append(data)
+        if not is_expired(data):
+            rows.append(data)
     return sorted(rows, key=lambda d: d.get("updated", 0), reverse=True)
 
 

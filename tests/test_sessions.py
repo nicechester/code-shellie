@@ -1,6 +1,7 @@
 import json
 import os
 import stat
+import time
 
 import pytest
 
@@ -16,7 +17,8 @@ def isolated_sessions(monkeypatch, tmp_path):
     return tmp_path / "sessions"
 
 
-def meta(session_id, cwd="/work/a", updated=1.0, prompt="first prompt"):
+def meta(session_id, cwd="/work/a", updated=None, prompt="first prompt"):
+    updated = time.time() if updated is None else updated
     return {"id": session_id, "started": 0.0, "cwd": cwd, "model": "m",
             "description": sessions.describe(prompt), "updated": updated,
             "history": [{"role": "user", "parts": [{"text": prompt}]}]}
@@ -63,9 +65,10 @@ def test_unreadable_session_is_reported_not_raised(isolated_sessions):
 
 
 def test_latest_for_directory_picks_newest_in_that_directory():
-    sessions.save(meta("aaaaaaaa", cwd="/work/a", updated=1.0))
-    sessions.save(meta("bbbbbbbb", cwd="/work/a", updated=5.0))
-    sessions.save(meta("cccccccc", cwd="/work/b", updated=9.0))
+    now = time.time()
+    sessions.save(meta("aaaaaaaa", cwd="/work/a", updated=now - 300))
+    sessions.save(meta("bbbbbbbb", cwd="/work/a", updated=now - 100))
+    sessions.save(meta("cccccccc", cwd="/work/b", updated=now - 10))
 
     assert sessions.latest_for_directory("/work/a")["id"] == "bbbbbbbb"
     assert sessions.latest_for_directory("/nowhere") is None
@@ -161,3 +164,55 @@ def test_reset_keeps_the_file_but_discard_deletes_it(monkeypatch):
     with pytest.raises(sessions.SessionError):
         sessions.load("0a1b2c3d")
     assert agent.history == [] and agent.session is None
+
+
+# Expiry
+
+HOUR = 3600
+
+
+def test_default_ttl_is_24_hours(monkeypatch):
+    monkeypatch.delenv("SESSION_TTL_HOURS", raising=False)
+    monkeypatch.setattr(sessions, "load_environment", lambda: None)
+    assert sessions.ttl_seconds() == 24 * HOUR
+
+
+def test_ttl_can_be_set_and_zero_turns_expiry_off(monkeypatch):
+    monkeypatch.setattr(sessions, "load_environment", lambda: None)
+    monkeypatch.setenv("SESSION_TTL_HOURS", "2")
+    assert sessions.ttl_seconds() == 2 * HOUR
+    monkeypatch.setenv("SESSION_TTL_HOURS", "0")
+    assert sessions.ttl_seconds() == 0
+    assert not sessions.is_expired({"updated": 0})
+
+
+def test_invalid_ttl_falls_back_to_default(monkeypatch):
+    monkeypatch.setattr(sessions, "load_environment", lambda: None)
+    monkeypatch.setenv("SESSION_TTL_HOURS", "soon")
+    assert sessions.ttl_seconds() == 24 * HOUR
+
+
+def test_purge_deletes_only_expired_sessions(isolated_sessions):
+    sessions.save(meta("aaaaaaaa", updated=time.time() - 25 * HOUR))
+    sessions.save(meta("bbbbbbbb", updated=time.time() - HOUR))
+
+    assert sessions.purge_expired() == 1
+    assert not (isolated_sessions / "aaaaaaaa.json").exists()
+    assert sessions.load("bbbbbbbb")["id"] == "bbbbbbbb"
+
+
+def test_purge_leaves_unreadable_files_for_the_user(isolated_sessions):
+    isolated_sessions.mkdir(parents=True)
+    (isolated_sessions / "0a1b2c3d.json").write_text("{not json", encoding="utf-8")
+
+    assert sessions.purge_expired() == 0
+    assert (isolated_sessions / "0a1b2c3d.json").exists()
+
+
+def test_expired_session_cannot_be_resumed_or_listed(isolated_sessions):
+    sessions.save(meta("aaaaaaaa", cwd="/work/a", updated=time.time() - 25 * HOUR))
+
+    with pytest.raises(sessions.SessionError, match="expired"):
+        sessions.load("aaaaaaaa")
+    assert sessions.list_sessions() == []
+    assert sessions.latest_for_directory("/work/a") is None

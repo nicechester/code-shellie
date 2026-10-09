@@ -94,6 +94,7 @@ def main(argv=None):
 
 
 def run(prompt, resume=None):
+    sessions.purge_expired()
     api_key = get_api_key()
     if not api_key:
         print(yellow("No API key found. Entering setup mode..."))

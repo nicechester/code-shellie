@@ -212,6 +212,7 @@ Resume this session with: codesh --resume ad632a21
 - `codesh --sessions` lists saved sessions with their IDs, times, directories, and descriptions. `/sessions` does the same in the REPL.
 - A session's description is its first prompt, cut to one line.
 - `/reset` deletes the current session file, so nothing is left to resume, and starts a new chat.
+- A session expires after 24 hours without a turn. Expired sessions are deleted when `codesh` starts, and can no longer be listed or resumed. Change the limit with `SESSION_TTL_HOURS` in `~/.config/shellie-code/.env`, for example `SESSION_TTL_HOURS=72`. A value of `0` turns expiry off.
 
 Pass a prompt before `--resume`, not after it, so the prompt is not taken as the session ID:
 
@@ -230,7 +231,7 @@ Code Shellie reads its settings from `~/.config/shellie-code/`. Everything else 
 | `~/.config/shellie-code/.env` | API key and model name (written by `/setup`) |
 | `~/.config/shellie-code/SYSTEM.md` | Instructions added to every session, for every project |
 | `~/.config/shellie-code/mcp.json` | MCP server definitions |
-| `~/.config/shellie-code/sessions/` | Saved conversations, one JSON file per session (see [Resuming a session](#resuming-a-session)) |
+| `~/.config/shellie-code/sessions/` | Saved conversations, one JSON file per session, expiring after `SESSION_TTL_HOURS` (default 24) (see [Resuming a session](#resuming-a-session)) |
 | `.shellie/PROJECT.md` (in a project) | Instructions added for that project |
 
 ### API key and model
