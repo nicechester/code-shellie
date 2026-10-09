@@ -124,6 +124,8 @@ Input that starts with `/` is a command. It never goes to the model.
 | `/model` | REPL | Show the current model. `/model <name>` switches to that model and saves it |
 | `/mcp` | REPL | Show configured MCP servers, their connection status, and their tools |
 | `/copy` | REPL | Copy the last answer to the system clipboard |
+| `/sessions` | REPL | List saved sessions with their IDs and descriptions |
+| `/reset` | REPL | Clear the chat and delete the current session file, so nothing is left to resume |
 | `/sources` | REPL | Show the full URLs behind the last web search. Resolves the links on demand; does not call the model |
 | `/skills` | REPL | List installed skills and whether each one is enabled |
 | `/skill enable <name>`, `/skill disable <name>` | REPL | Turn a skill on or off |
@@ -197,6 +199,28 @@ Rules:
 
 In the REPL, type `exit`, `quit`, `/exit`, or `/quit`, or press Ctrl+D. Ctrl+C also leaves the REPL.
 
+### Resuming a session
+
+Each completed turn is saved to `~/.config/shellie-code/sessions/<id>.json`, with the conversation so far. When a session has at least one turn, leaving `codesh` prints its ID:
+
+```
+Resume this session with: codesh --resume ad632a21
+```
+
+- `codesh --resume` continues the most recent session started in the current directory.
+- `codesh --resume <id>` continues a specific session, from any directory. If the directory has changed, you get a note, because file paths in the history may no longer apply.
+- `codesh --sessions` lists saved sessions with their IDs, times, directories, and descriptions. `/sessions` does the same in the REPL.
+- A session's description is its first prompt, cut to one line.
+- `/reset` deletes the current session file, so nothing is left to resume, and starts a new chat.
+
+Pass a prompt before `--resume`, not after it, so the prompt is not taken as the session ID:
+
+```bash
+codesh "what did we change last?" --resume
+```
+
+Session files can contain file contents and command output. They are created readable only by you (mode 0600). Delete the file to remove a session.
+
 ## Configuration
 
 Code Shellie reads its settings from `~/.config/shellie-code/`. Everything else is optional.
@@ -206,6 +230,7 @@ Code Shellie reads its settings from `~/.config/shellie-code/`. Everything else 
 | `~/.config/shellie-code/.env` | API key and model name (written by `/setup`) |
 | `~/.config/shellie-code/SYSTEM.md` | Instructions added to every session, for every project |
 | `~/.config/shellie-code/mcp.json` | MCP server definitions |
+| `~/.config/shellie-code/sessions/` | Saved conversations, one JSON file per session (see [Resuming a session](#resuming-a-session)) |
 | `.shellie/PROJECT.md` (in a project) | Instructions added for that project |
 
 ### API key and model

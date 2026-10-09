@@ -16,6 +16,7 @@ BASE_SLASH_COMMANDS = (
     "/reset",
     "/copy",
     "/sources",
+    "/sessions",
     "/skills",
     "/skill",
     "/exit",

@@ -2,7 +2,7 @@ import copy
 
 import pytest
 
-from code_shellie import core
+from code_shellie import core, sessions
 from code_shellie.core import Agent
 from code_shellie.gemini import GeminiError
 
@@ -26,6 +26,7 @@ def make_agent(responses):
     agent.api_key = "test-key"
     agent.system_instruction = "system"
     agent.history = []
+    agent.session = None
     agent.prompt_token_count = 0
     agent.total_token_count = 0
     agent.model_limit = None
@@ -35,9 +36,10 @@ def make_agent(responses):
 
 
 @pytest.fixture(autouse=True)
-def no_mcp_tools(monkeypatch):
-    # Keep tests away from the user's real MCP config
+def isolated_config(monkeypatch, tmp_path):
+    # Keep tests away from the user's real MCP config and saved sessions
     monkeypatch.setattr(core, "all_declarations", lambda: [])
+    monkeypatch.setattr(sessions, "SESSIONS_DIR", tmp_path / "sessions")
 
 
 def ok(function_calls=(), text=None):

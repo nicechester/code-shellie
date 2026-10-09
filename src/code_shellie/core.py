@@ -3,10 +3,9 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import gemini
+from . import gemini, sessions
 from .config import get_api_key, get_model_name
 from .context import load_contexts
-from . import gemini
 from .gemini import GeminiError
 from .markdown import render as render_markdown
 from .mcp_client import get_manager
@@ -57,6 +56,7 @@ class Agent:
         self._base_instruction = base_instruction
         self.system_instruction = self._build_instruction()
         self.history = []
+        self.session = None  # metadata of the saved session this chat writes to; None until the first turn completes
         self.prompt_token_count = 0
         self.total_token_count = 0
         self.last_answer = ""
@@ -75,10 +75,38 @@ class Agent:
         self.reset_chat()
 
     def reset_chat(self):
-        """Clear the conversation history while keeping client/model configuration."""
+        """Clear the conversation history. The saved session file, if any, is kept so it can still be resumed."""
         self.history = []
+        self.session = None
         self.prompt_token_count = 0
         self.total_token_count = 0
+
+    def discard_session(self):
+        """Delete the current session file and clear the chat, so nothing is left to resume."""
+        if self.session is not None:
+            sessions.delete(self.session["id"])
+        self.reset_chat()
+
+    def restore(self, data: dict):
+        """Continue a saved session: its history becomes the chat, and new turns are saved to the same file."""
+        self.history = list(data["history"])
+        self.session = {key: data[key] for key in ("id", "started", "cwd", "model", "description")}
+        self.prompt_token_count = 0
+        self.total_token_count = 0
+
+    def _save_session(self, prompt: str):
+        if self.session is None:
+            self.session = {
+                "id": sessions.new_session_id(),
+                "started": time.time(),
+                "cwd": os.getcwd(),
+                "model": self.model,
+                "description": sessions.describe(prompt),
+            }
+        try:
+            sessions.save({**self.session, "updated": time.time(), "history": self.history})
+        except OSError as e:
+            print(yellow(f"Could not save the session: {e}"))
 
     def _payload(self) -> dict:
         return {
@@ -141,13 +169,15 @@ class Agent:
                 raise GeminiError(status, message, body)
 
     def run_turn(self, prompt: str):
-        """Run one user request to completion. On failure, the turn is removed from history so the session stays valid."""
+        """Run one user request to completion. On failure, the turn is removed from history so the session stays valid.
+        A completed turn is saved to the session file."""
         start = len(self.history)
         try:
             self._run_turn(prompt)
         except Exception:
             del self.history[start:]
             raise
+        self._save_session(prompt)
 
     def _run_turn(self, prompt: str):
         if self.verbose:

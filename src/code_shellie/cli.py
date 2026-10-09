@@ -1,8 +1,10 @@
 import argparse
+import os
 import subprocess
 import sys
 
 from .config import get_api_key, get_model_name, save_model
+from . import sessions
 from .setup import run_setup
 from .core import Agent
 from .clipboard import copy_to_clipboard
@@ -15,6 +17,7 @@ from .skills import disable_skill, enable_skill, enabled_skills, list_skills
 from .term import bold, cyan, dim, green, red, yellow
 
 CLEAR_SCREEN = "\x1b[2J\x1b[H"
+LATEST = "latest"  # --resume without an id: the latest session for this directory
 
 
 def _print_skills():
@@ -29,18 +32,68 @@ def _print_skills():
         print(f"  {state} {cyan('/' + name)} - {description}")
 
 
+def _one_line(text: str, limit: int) -> str:
+    line = " ".join(text.split())
+    return line if len(line) <= limit else line[:limit - 3] + "..."
+
+
+def print_sessions():
+    rows = sessions.list_sessions()
+    if not rows:
+        print("No saved sessions.")
+        return
+    for data in rows:
+        if "history" not in data:
+            print(f"{data['id']}  {red(data['description'])}")
+            continue
+        print(f"{data['id']}  {sessions.format_time(data['updated'])}  {dim(data['cwd'])}  {data['description']}")
+
+
+def print_exit_hint(agent):
+    if agent.session is not None:
+        print(dim(f"Resume this session with: codesh --resume {agent.session['id']}"))
+
+
+def resume_session(agent, which):
+    """Load a saved session into agent. Exits with a message if it cannot be loaded."""
+    try:
+        if which == LATEST:
+            data = sessions.latest_for_directory(os.getcwd())
+            if data is None:
+                raise sessions.SessionError("No saved session for this directory. See codesh --sessions.")
+        else:
+            data = sessions.load(which)
+    except sessions.SessionError as e:
+        print(red(str(e)))
+        sys.exit(1)
+    agent.restore(data)
+    print(bold(f"Resumed session {data['id']}: {data['description']}"))
+    if data.get("cwd") != os.getcwd():
+        print(yellow(f"Note: this session was started in {data.get('cwd')}. File paths in it may not apply here."))
+    for prompt_text, answer in sessions.recent_turns(data["history"]):
+        print(dim(f"> {_one_line(prompt_text, 100)}"))
+        print(f"  {_one_line(answer, 200)}")
+    print()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Code Shellie: Your AI Coding Agent")
     parser.add_argument("prompt", nargs="?", help="run one request and exit; omit for the interactive REPL")
+    parser.add_argument("--resume", nargs="?", const=LATEST, default=None, metavar="ID",
+                        help="continue a saved session: the latest for this directory, or the one with ID")
+    parser.add_argument("--sessions", action="store_true", help="list saved sessions and exit")
     args = parser.parse_args(argv)
+    if args.sessions:
+        print_sessions()
+        return
     try:
-        run(args.prompt)
+        run(args.prompt, args.resume)
     finally:
         # Forget MCP connections before the interpreter exits
         shutdown_mcp()
 
 
-def run(prompt):
+def run(prompt, resume=None):
     api_key = get_api_key()
     if not api_key:
         print(yellow("No API key found. Entering setup mode..."))
@@ -53,6 +106,9 @@ def run(prompt):
         print("Run " + bold("codesh /setup") + " to reconfigure.")
         sys.exit(1)
 
+    if resume is not None:
+        resume_session(agent, resume)
+
     if prompt:
         if prompt == "/setup":
             run_setup()
@@ -61,8 +117,8 @@ def run(prompt):
             print(CLEAR_SCREEN, end="")
             return
         if prompt == "/reset":
-            agent.reset_chat()
-            print(green("Conversation history reset."))
+            agent.discard_session()
+            print(green("Conversation history reset. The saved session was deleted."))
             return
         if prompt.startswith("!"):
             # Execute shell command directly
@@ -78,6 +134,7 @@ def run(prompt):
             agent.run_turn(prompt)
         except GeminiError as e:
             print(red(f"Request failed: {e.message}"))
+        print_exit_hint(agent)
         return
 
     # Interactive REPL mode
@@ -109,6 +166,7 @@ def run(prompt):
                 print(f"  {cyan('/clear')}   - Clear the terminal screen")
                 print(f"  {cyan('/reset')}   - Reset conversation history / chat session")
                 print(f"  {cyan('/copy')}    - Copy the last answer to the clipboard")
+                print(f"  {cyan('/sessions')} - List saved sessions")
                 print(f"  {cyan('/sources')} - Show the full URLs of the last web search's sources")
                 print(f"  {cyan('/skills')}  - List skills and whether each is enabled")
                 print(f"  {cyan('/skill enable|disable <name>')} - Turn a skill on or off")
@@ -129,8 +187,11 @@ def run(prompt):
                 print(CLEAR_SCREEN, end="")
                 continue
             if user_input == "/reset":
-                agent.reset_chat()
-                print(green("Conversation history reset."))
+                agent.discard_session()
+                print(green("Conversation history reset. The saved session was deleted."))
+                continue
+            if user_input == "/sessions":
+                print_sessions()
                 continue
             if user_input == "/sources":
                 if not gemini.last_sources:
@@ -208,6 +269,7 @@ def run(prompt):
         except (KeyboardInterrupt, EOFError):
             print(cyan("\nGoodbye!"))
             break
+    print_exit_hint(agent)
 
 
 if __name__ == "__main__":
