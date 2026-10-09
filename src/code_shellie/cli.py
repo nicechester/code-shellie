@@ -7,6 +7,7 @@ from .setup import run_setup
 from .core import Agent
 from .clipboard import copy_to_clipboard
 from .completion import complete
+from . import gemini
 from .gemini import GeminiError
 from .line_editor import LineEditor
 from .mcp_client import get_manager, shutdown_mcp
@@ -108,6 +109,7 @@ def run(prompt):
                 print(f"  {cyan('/clear')}   - Clear the terminal screen")
                 print(f"  {cyan('/reset')}   - Reset conversation history / chat session")
                 print(f"  {cyan('/copy')}    - Copy the last answer to the clipboard")
+                print(f"  {cyan('/sources')} - Show the full URLs of the last web search's sources")
                 print(f"  {cyan('/skills')}  - List skills and whether each is enabled")
                 print(f"  {cyan('/skill enable|disable <name>')} - Turn a skill on or off")
                 print(f"  {cyan('/<skill>')} - Enable a skill by name")
@@ -129,6 +131,12 @@ def run(prompt):
             if user_input == "/reset":
                 agent.reset_chat()
                 print(green("Conversation history reset."))
+                continue
+            if user_input == "/sources":
+                if not gemini.last_sources:
+                    print(yellow("No sources yet. Run a web search first."))
+                for i, (title, uri) in enumerate(gemini.last_sources, 1):
+                    print(f"[{i}] {title} - {gemini.resolve_url(uri)}")
                 continue
             if user_input == "/copy":
                 if not agent.last_answer:

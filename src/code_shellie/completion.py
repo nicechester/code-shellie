@@ -15,6 +15,7 @@ BASE_SLASH_COMMANDS = (
     "/clear",
     "/reset",
     "/copy",
+    "/sources",
     "/skills",
     "/skill",
     "/exit",

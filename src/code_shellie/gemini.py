@@ -1,12 +1,18 @@
 """Gemini REST client. One request per call; the retry policy lives in core.py."""
 from __future__ import annotations
 
+import time
+import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
 from .http import http_get, http_post_h
 
 API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
 REQUEST_TIMEOUT_SEC = 120
+SEARCH_5XX_BACKOFF_SEC = (1, 2, 4)  # same schedule as the chat path in core.py
+
+# (title, uri) pairs from the most recent search, as Google returned them (redirect links)
+last_sources: List[Tuple[str, str]] = []
 
 
 class GeminiError(Exception):
@@ -38,6 +44,47 @@ def generate(model: str, api_key: str, payload: Dict[str, Any]) -> Tuple[int, Di
         url, payload, headers={"x-goog-api-key": api_key}, timeout=REQUEST_TIMEOUT_SEC
     )
     return status, body
+
+
+def search(query: str, model: str, api_key: str) -> str:
+    """Answer a query with Google Search grounding, as a separate request that does not touch the chat history.
+
+    Returns the answer text, or "Web search failed (HTTP <status>)" on a non-200 response.
+    """
+    payload = {
+        "contents": [{"parts": [{"text": query}]}],
+        "tools": [{"google_search": {}}],
+    }
+    status, body = generate(model, api_key, payload)
+    for delay in SEARCH_5XX_BACKOFF_SEC:
+        if status < 500:
+            break
+        time.sleep(delay)
+        status, body = generate(model, api_key, payload)
+    if status != 200:
+        return f"Web search failed (HTTP {status})"
+    answer = parse_response(body).text or "(no result)"
+    sources = _grounding_sources(body)
+    last_sources[:] = sources
+    if sources:
+        answer += "\n\nSources:\n" + "\n".join(f"[{i}] {title} - {uri}" for i, (title, uri) in enumerate(sources, 1))
+    return answer
+
+
+def _grounding_sources(body: Dict[str, Any]) -> List[Tuple[str, str]]:
+    """Unique (title, uri) pairs from the grounding metadata of the first candidate, in order."""
+    candidates = body.get("candidates") or []
+    candidate = candidates[0] if candidates and isinstance(candidates[0], dict) else {}
+    metadata = candidate.get("groundingMetadata") or {}
+    seen = []
+    for chunk in metadata.get("groundingChunks") or []:
+        web = chunk.get("web") if isinstance(chunk, dict) else None
+        if not web or not web.get("uri"):
+            continue
+        pair = (web.get("title") or web["uri"], web["uri"])
+        if pair not in seen:
+            seen.append(pair)
+    return seen
 
 
 def get_input_limit(model: str, api_key: str) -> Optional[int]:
@@ -80,3 +127,12 @@ def parse_response(body: Dict[str, Any]) -> Reply:
         elif "text" in part:
             text_chunks.append(part.get("text") or "")
     return Reply("".join(text_chunks), function_calls, content, prompt_tokens, total_tokens)
+
+
+def resolve_url(uri: str, timeout: int = 10) -> str:
+    """Follow a grounding redirect to the page it points at. Returns the original link if it cannot be followed."""
+    try:
+        with urllib.request.urlopen(uri, timeout=timeout) as res:
+            return res.geturl()
+    except Exception:
+        return uri

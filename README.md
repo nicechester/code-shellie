@@ -124,6 +124,7 @@ Input that starts with `/` is a command. It never goes to the model.
 | `/model` | REPL | Show the current model. `/model <name>` switches to that model and saves it |
 | `/mcp` | REPL | Show configured MCP servers, their connection status, and their tools |
 | `/copy` | REPL | Copy the last answer to the system clipboard |
+| `/sources` | REPL | Show the full URLs behind the last web search. Resolves the links on demand; does not call the model |
 | `/skills` | REPL | List installed skills and whether each one is enabled |
 | `/skill enable <name>`, `/skill disable <name>` | REPL | Turn a skill on or off |
 | `/<skill-name>` | REPL | Enable a skill by typing its name as a command |
@@ -260,6 +261,7 @@ The model can call these tools. There are no approval prompts: a tool call runs 
 | `write_file(file_path, content)` | Writes text to a file, creating parent directories as needed. Overwrites existing files. |
 | `list_directory(dir_path)` | Lists a directory, folders first. Hidden entries (starting with `.`) are omitted. |
 | `run_shell_command(command)` | Runs a command through the shell and returns stdout, stderr, and any non-zero exit code. Times out after 60 seconds. |
+| `execute_web_search(query)` | Looks up current information with Google Search grounding and returns the answer text. It uses `SEARCH_MODEL` and runs as a separate request, so it does not add to the chat history. |
 | `mcp__<server>__<tool>` | Tools from configured MCP servers (see below). |
 
 Because tools run without confirmation, the agent can change or delete files and run any command your user account can. Keep the working directory and the requests you make in mind, and review changes with `git diff` or similar.
@@ -293,6 +295,16 @@ Code Shellie can use tools from [Model Context Protocol](https://modelcontextpro
 - Tool calls time out after 60 seconds. Server errors are passed back to the model as text.
 
 Only the `url` and `headers` fields are used. Responses may be plain JSON or a `text/event-stream`. An SSE-only server (the older transport) will not connect.
+
+### Web search
+
+`execute_web_search` uses the model in `SEARCH_MODEL`, which defaults to `gemma-4-26b-a4b-it`. Set it in `~/.config/shellie-code/.env`, in the environment, or in a local `.env`:
+
+```
+SEARCH_MODEL=gemma-4-26b-a4b-it
+```
+
+The search has its own quota, separate from the chat model's limits. If the search request fails, the tool returns `Web search failed (HTTP <status>)` and the chat continues.
 
 ## Rate limits and errors
 

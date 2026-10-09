@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from .config import get_api_key, get_search_model
+from .gemini import search as gemini_search
 from .mcp_client import get_manager
 from .shell import run_command
 
@@ -44,12 +46,17 @@ def run_shell_command(command: str) -> str:
     """Run a shell command and return its output."""
     return run_command(command)
 
+def execute_web_search(query: str) -> str:
+    """Look up current information with Google Search grounding, using the SEARCH_MODEL setting."""
+    return gemini_search(query, get_search_model(), get_api_key())
+
 # Tool implementations registry
 TOOL_FUNCTIONS = {
     "read_file": read_file,
     "write_file": write_file,
     "list_directory": list_directory,
     "run_shell_command": run_shell_command,
+    "execute_web_search": execute_web_search,
 }
 
 # Gemini function declarations as plain dicts (REST field names, OpenAPI-style schema)
@@ -100,6 +107,17 @@ TOOL_DECLARATIONS = [
                 "command": {"type": "STRING", "description": "The shell command to execute."},
             },
             "required": ["command"],
+        },
+    },
+    {
+        "name": "execute_web_search",
+        "description": "Search the web for current information using Google Search grounding.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {"type": "STRING", "description": "Search query"},
+            },
+            "required": ["query"],
         },
     },
 ]

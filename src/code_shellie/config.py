@@ -59,3 +59,8 @@ def get_api_key() -> str:
 def get_model_name() -> str:
     load_environment()
     return os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+
+
+def get_search_model() -> str:
+    load_environment()
+    return os.getenv("SEARCH_MODEL", "gemma-4-26b-a4b-it")

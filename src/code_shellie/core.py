@@ -6,6 +6,7 @@ from pathlib import Path
 from . import gemini
 from .config import get_api_key, get_model_name
 from .context import load_contexts
+from . import gemini
 from .gemini import GeminiError
 from .markdown import render as render_markdown
 from .mcp_client import get_manager
@@ -24,6 +25,9 @@ def _git_branch(cwd: Path) -> str:
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return result.stdout.strip() if result.returncode == 0 else ""
+
+# Tool results that start with one of these count as failures in the compact view
+FAILURE_PREFIXES = ("Error", "Web search failed")
 
 RATE_LIMIT_COOLDOWN_SEC = 60
 RATE_LIMIT_RETRIES = 3
@@ -149,6 +153,7 @@ class Agent:
         if self.verbose:
             print(blue("thinking..."))
         reply = self._send([{"text": expand_mentions(prompt)}])
+        searched = False
 
         while True:
             # Check if model wants to call functions
@@ -160,7 +165,8 @@ class Agent:
                         print(yellow(f"⚡ Executing tool: {name}({args})"))
 
                     result = execute_tool(name, args)
-                    failed = str(result).startswith("Error")
+                    searched = searched or name == "execute_web_search"
+                    failed = str(result).startswith(FAILURE_PREFIXES)
                     if self.verbose:
                         print(dim(f"Result: {str(result)[:200]}..."))
                     elif failed:
@@ -178,6 +184,8 @@ class Agent:
                     print(f"\n{green('Code Shellie:')}\n")
                     print(render_markdown(reply.text))
                     print()
+                    if searched and gemini.last_sources:
+                        print(dim("Sources: type /sources for the full links."))
                     print(dim(self._footer()))
                 break
 

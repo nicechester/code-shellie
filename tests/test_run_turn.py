@@ -199,3 +199,31 @@ def test_view_does_not_change_what_is_sent_to_model(monkeypatch, compact_view):
         results.append(function_responses(agent._generate.requests[1][-1]))
 
     assert results[0] == results[1] == [("read_file", "body")]
+
+
+def test_compact_view_always_shows_failed_web_search(monkeypatch, capsys, compact_view):
+    agent = make_agent([ok(function_calls=[("execute_web_search", {"query": "x"})]), ok(text="done")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "Web search failed (HTTP 429)")
+
+    agent.run_turn("search it")
+
+    assert "execute_web_search failed" in capsys.readouterr().out
+
+
+def test_answer_after_web_search_hints_at_sources(monkeypatch, capsys, compact_view):
+    monkeypatch.setattr(core.gemini, "last_sources", [("npmjs.com", "https://r.example/1")])
+    agent = make_agent([ok(function_calls=[("execute_web_search", {"query": "x"})]), ok(text="done")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "done")
+
+    agent.run_turn("search it")
+
+    assert "type /sources for the full links" in capsys.readouterr().out
+
+
+def test_answer_without_search_has_no_sources_hint(monkeypatch, capsys, compact_view):
+    monkeypatch.setattr(core.gemini, "last_sources", [("npmjs.com", "https://r.example/1")])
+    agent = make_agent([ok(text="plain answer")])
+
+    agent.run_turn("hello")
+
+    assert "/sources" not in capsys.readouterr().out
