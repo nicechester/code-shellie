@@ -35,13 +35,14 @@ import urllib.request
 from collections import deque
 from pathlib import Path
 
+from . import __version__
 from .config import CONFIG_DIR
 from .term import dim, green, red
 
 MCP_CONFIG_PATH = CONFIG_DIR / "mcp.json"
 MCP_TOOL_PREFIX = "mcp__"
 PROTOCOL_VERSION = "2025-06-18"
-CLIENT_INFO = {"name": "code-shellie", "version": "0.1.0"}
+CLIENT_INFO = {"name": "code-shellie", "version": __version__}
 CALL_TIMEOUT_SEC = 60
 CONNECT_TIMEOUT_SEC = 30
 

@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 from .config import get_api_key, get_model_name, save_model
-from . import sessions
+from . import __version__, sessions
 from .setup import run_setup
 from .core import Agent
 from .clipboard import copy_to_clipboard
@@ -78,6 +78,7 @@ def resume_session(agent, which):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Code Shellie: Your AI Coding Agent")
+    parser.add_argument("--version", action="version", version=f"codesh {__version__}")
     parser.add_argument("prompt", nargs="?", help="run one request and exit; omit for the interactive REPL")
     parser.add_argument("--resume", nargs="?", const=LATEST, default=None, metavar="ID",
                         help="continue a saved session: the latest for this directory, or the one with ID")
@@ -139,7 +140,7 @@ def run(prompt, resume=None):
         return
 
     # Interactive REPL mode
-    print(bold(cyan("Welcome to Code Shellie (Interactive REPL)")))
+    print(bold(cyan(f"Welcome to Code Shellie {__version__} (Interactive REPL)")))
     print("Type your instructions, '!command' to run shell, '/setup' to reconfigure, or 'exit'/'/exit' to quit.")
     print("Enter submits; Alt+Enter or Ctrl+J adds a newline. Pasted multi-line text stays in one prompt.")
     print("Tab completes commands and @paths. Output is compact by default; Ctrl+O switches to verbose (tool arguments and results).\n")

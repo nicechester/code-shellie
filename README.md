@@ -106,6 +106,7 @@ Completion is available as you type:
 Pass a prompt as an argument to run a single turn and exit:
 
 ```bash
+codesh --version
 codesh "list the Python files in src/ and explain what each one does"
 codesh '!git status'
 codesh /setup
