@@ -26,7 +26,7 @@ Code Shellie (`codesh`) is a Gemini-powered coding agent for your local terminal
 
 ## Requirements
 
-- Python 3.10 or newer
+- Python 3.8 or newer. There are no third-party runtime dependencies; the package uses only the standard library.
 - A Google Gemini API key ([Google AI Studio](https://aistudio.google.com/))
 - Linux or macOS with a POSIX shell (`/bin/sh`) for `!command` and the `run_shell_command` tool
 
@@ -284,15 +284,15 @@ Code Shellie can use tools from [Model Context Protocol](https://modelcontextpro
 }
 ```
 
-- A server with `command` is launched as a local subprocess (stdio transport).
 - A server with `url` is reached over streamable HTTP. Optional `headers` are sent with each request.
+- A server with `command` (stdio transport) is not supported yet. It is reported by `/mcp` as failed and skipped, so move it to an HTTP server or remove it from the file.
 - `${VAR}` in `command`, `args`, `env`, `url`, and `headers` is replaced with the value of the environment variable `VAR`, so tokens can stay out of the file. An unset variable becomes an empty string.
 - Each tool is exposed to the model as `mcp__<server>__<tool>`.
 - Servers connect when `codesh` starts. A server that fails to start (bad command, unreachable URL, rejected auth) is reported and skipped; the others still load.
 - Use `/mcp` in the REPL to see each server's status and tool list.
 - Tool calls time out after 60 seconds. Server errors are passed back to the model as text.
 
-Only the `command`/`args`/`env` and `url`/`headers` fields are read. The `type` field used by some other clients is ignored, so an SSE-only server will not connect (only streamable HTTP is supported).
+Only the `url` and `headers` fields are used. Responses may be plain JSON or a `text/event-stream`. An SSE-only server (the older transport) will not connect.
 
 ## Rate limits and errors
 
@@ -302,7 +302,7 @@ The Gemini client follows this policy:
 - **Daily quota (429, RPD):** stops immediately and reports that the daily quota is reached.
 - **Server errors (5xx):** retries up to three times with 1, 2, and 4 second delays, then stops.
 
-Other API errors (for example, an invalid API key or a rejected model name) are not caught. They surface on your first request, not at startup, and they end the session with a traceback.
+Other API errors (for example, an invalid API key or a rejected model name) are shown as `Request failed: ...`. The turn is dropped from the history and the session continues, so you can fix the setting and retry.
 
 ## Project layout
 
@@ -315,16 +315,21 @@ codeshellie/
 └── src/code_shellie/
     ├── cli.py              # entry point, REPL, slash commands, one-shot mode
     ├── core.py             # Agent: Gemini chat, system prompt, tool-call loop, retry policy
+    ├── gemini.py           # Gemini REST calls and response parsing
     ├── tools.py            # built-in tools and their Gemini function declarations
-    ├── mcp_client.py       # MCP server connections, tool discovery, /mcp status
+    ├── shell.py            # runs run_shell_command with a timeout and output limit
+    ├── mcp_client.py       # MCP server connections over HTTP, tool discovery, /mcp status
+    ├── http.py             # JSON HTTP helpers on urllib
+    ├── line_editor.py      # REPL line editor (termios): paste, newlines, Tab, Ctrl+O
+    ├── term.py             # ANSI colors, off when output is not a terminal
     ├── config.py           # reads and writes ~/.config/shellie-code/.env
     ├── setup.py            # interactive API key and model setup
     ├── context.py          # loads SYSTEM.md and .shellie/PROJECT.md
     ├── mentions.py         # expands @path attachments
-    └── completion.py       # tab completion for @paths
+    └── completion.py       # tab completion for slash commands and @paths
 ```
 
-Running the tests is not yet set up; the project has no test suite.
+Run the tests with `venv/bin/pytest`.
 
 ## Troubleshooting
 

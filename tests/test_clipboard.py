@@ -1,8 +1,7 @@
 import subprocess
 
 from code_shellie import clipboard
-from code_shellie.completion import SlashCompleter
-from prompt_toolkit.document import Document
+from code_shellie.completion import slash_completions
 
 def test_copy_returns_none_without_clipboard_tool(monkeypatch):
     monkeypatch.setattr(clipboard.shutil, "which", lambda name: None)
@@ -17,5 +16,4 @@ def test_copy_uses_first_available_tool(monkeypatch):
     assert calls == [(["xclip", "-selection", "clipboard"], "hello")]
 
 def test_slash_completer_suggests_copy():
-    completions = list(SlashCompleter().get_completions(Document("/cop"), None))
-    assert [c.text for c in completions] == ["/copy"]
+    assert slash_completions("/cop") == ["/copy"]

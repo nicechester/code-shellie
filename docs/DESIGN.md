@@ -18,7 +18,7 @@ shellie-code/
 │       ├── __init__.py
 │       ├── core.py       # Gemini Agent Loop & Tool execution engine
 │       ├── tools.py      # File I/O, Shell execution, Git operations
-│       └── cli.py        # Terminal interface (Rich, Prompt Toolkit)
+│       └── cli.py        # Terminal interface (stdlib line editor)
 └── tests/
     ├── __init__.py
     └── test_core.py
@@ -38,12 +38,12 @@ The agent interacts with the filesystem and OS via defined function calling tool
 
 ### 3.2 `core.py` (Agent Loop)
 - Manages conversation history and state.
-- Sends prompts and conversation history to the Gemini API (`google-genai` SDK).
+- Sends prompts and conversation history to the Gemini REST API (`urllib`, no SDK).
 - Handles `FUNCTION_CALL` responses, executing the requested tool via `tools.py`, and feeding results back to Gemini.
 - Supports an **Approval Hook** before executing destructive tools (like `write_file` or `run_shell`).
 
 ### 3.3 `cli.py` (Terminal Interface)
-- Built using `click`, `rich`, and `prompt_toolkit`.
+- Standard library only: `argparse` for flags, `termios` for the line editor, plain ANSI colors.
 - Provides streaming output, syntax highlighting, and interactive prompts (`[Y/n]` confirmations).
 
 ---

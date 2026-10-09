@@ -1,16 +1,14 @@
 import re
 from pathlib import Path
 
-from rich.console import Console
-
-console = Console()
+from .term import dim
 
 # "@" must start the input or follow whitespace, so emails like user@host are not mentions.
 MENTION_RE = re.compile(r"(?<!\S)@(\S+)")
 TRAILING_PUNCT = ".,;:!?)\"'"
 MAX_CHARS = 100_000
 
-def _resolve(raw: str) -> tuple[str, Path] | None:
+def _resolve(raw: str) -> tuple:
     for candidate in (raw, raw.rstrip(TRAILING_PUNCT)):
         if candidate and Path(candidate).expanduser().exists():
             return candidate, Path(candidate).expanduser()
@@ -42,7 +40,7 @@ def expand_mentions(text: str) -> str:
         if raw in seen:
             continue
         seen.add(raw)
-        console.print(f"[dim]Attached {raw}[/dim]")
+        print(dim(f"Attached {raw}"))
         attachments.append(_render(raw, path))
     if not attachments:
         return text

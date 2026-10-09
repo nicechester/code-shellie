@@ -1,21 +1,18 @@
 import os
 import subprocess
 import time
-from contextlib import nullcontext
 from pathlib import Path
-from google import genai
-from google.genai import errors, types
-from rich.console import Console
-from rich.markdown import Markdown
-from rich.markup import escape
-from .config import get_api_key, get_model_name
-from .tools import TOOL_DECLARATIONS, execute_tool
-from .context import load_contexts
-from .skills import enabled_skills_prompt
-from .mentions import expand_mentions
-from .mcp_client import get_manager
 
-console = Console()
+from . import gemini
+from .config import get_api_key, get_model_name
+from .context import load_contexts
+from .gemini import GeminiError
+from .markdown import render as render_markdown
+from .mcp_client import get_manager
+from .mentions import expand_mentions
+from .skills import enabled_skills_prompt
+from .term import blue, dim, green, red, yellow
+from .tools import all_declarations, execute_tool
 
 def _git_branch(cwd: Path) -> str:
     """Current git branch for cwd, or '' outside a repository or on error."""
@@ -37,12 +34,12 @@ class Agent:
     verbose = False
 
     def __init__(self):
-        api_key = get_api_key()
-        if not api_key:
+        self.api_key = get_api_key()
+        if not self.api_key:
             raise ValueError("API key not found.")
-        self.client = genai.Client(api_key=api_key)
         self.model = get_model_name()
-        
+        get_manager()  # connect MCP servers at startup, not on the first request
+
         # Build system instruction with contexts
         base_instruction = (
             "You are Code Shellie, an expert AI software engineering agent. "
@@ -52,21 +49,14 @@ class Agent:
         extra_context = load_contexts()
         if extra_context:
             base_instruction += f"\n\n{extra_context}"
-            
+
         self._base_instruction = base_instruction
         self.system_instruction = self._build_instruction()
-        self.chat = self.client.chats.create(
-            model=self.model,
-            config=types.GenerateContentConfig(
-                system_instruction=self.system_instruction,
-                tools=[TOOL_DECLARATIONS, *get_manager().tool_declarations()],
-                temperature=0.2,
-            )
-        )
+        self.history = []
         self.prompt_token_count = 0
         self.total_token_count = 0
         self.last_answer = ""
-        self.model_limit = self._get_model_limit()
+        self.model_limit = gemini.get_input_limit(self.model, self.api_key)
 
     def _build_instruction(self) -> str:
         """Base instruction, project/system context, then the enabled skills."""
@@ -81,116 +71,114 @@ class Agent:
         self.reset_chat()
 
     def reset_chat(self):
-        """Reset the conversation chat session while keeping client/model configuration."""
-        self.chat = self.client.chats.create(
-            model=self.model,
-            config=types.GenerateContentConfig(
-                system_instruction=self.system_instruction,
-                tools=[TOOL_DECLARATIONS, *get_manager().tool_declarations()],
-                temperature=0.2,
-            )
-        )
+        """Clear the conversation history while keeping client/model configuration."""
+        self.history = []
         self.prompt_token_count = 0
         self.total_token_count = 0
 
-    def _get_model_limit(self):
-        try:
-            model_info = self.client.models.get(model=self.model)
-            return model_info.input_token_limit
-        except Exception:
-            return None
+    def _payload(self) -> dict:
+        return {
+            "contents": self.history,
+            "systemInstruction": {"parts": [{"text": self.system_instruction}]},
+            "tools": [{"functionDeclarations": all_declarations()}],
+            "generationConfig": {"temperature": 0.2},
+        }
 
-    def _send(self, message):
-        """Send a message, following the policy in shellie/docs/gemini_429_observations.md.
+    def _generate(self, payload: dict):
+        """One request to the model. Returns (status, body). Separate so tests can replace it."""
+        return gemini.generate(self.model, self.api_key, payload)
 
+    def _send(self, parts):
+        """Append a user turn (text or function responses), then request the model's reply.
+
+        Policy (see docs/gemini_429_observations.md in shellie):
         Per-minute 429 (RPM or input tokens): always cool down for RATE_LIMIT_COOLDOWN_SEC, up to RATE_LIMIT_RETRIES times.
-        RPD: give up (no fallback model here).
-        5xx: retry with exponential backoff (1s, 2s, 4s), then give up.
-        Giving up raises APIError, which the REPL catches so the session continues.
+        RPD: give up. 5xx: retry with exponential backoff (1s, 2s, 4s), then give up.
+        Giving up raises GeminiError, which the REPL catches so the session continues.
         """
+        self.history.append({"role": "user", "parts": parts})
+        try:
+            reply = self._request_with_retries()
+        except Exception:
+            self.history.pop()
+            raise
+        if reply.content:  # a blocked reply has no content; keep the history well-formed
+            self.history.append(reply.content)
+        self.prompt_token_count = reply.prompt_tokens or self.prompt_token_count
+        self.total_token_count += reply.total_tokens
+        return reply
+
+    def _request_with_retries(self):
         rate_limit_retries = 0
         server_retries = 0
         while True:
-            try:
-                response = self.chat.send_message(message)
-                if response.usage_metadata:
-                    self.prompt_token_count = response.usage_metadata.prompt_token_count
-                    self.total_token_count += response.usage_metadata.total_token_count
-                return response
-            except errors.APIError as e:
-                if e.code == 429:
-                    if "PerDay" in str(e):
-                        console.print("[bold red]Daily quota (RPD) reached. Try again tomorrow.[/bold red]")
-                        raise
-                    if rate_limit_retries >= RATE_LIMIT_RETRIES:
-                        console.print(f"[bold red]Still rate limited after {RATE_LIMIT_RETRIES} cooldowns. Stopping this turn.[/bold red]")
-                        raise
-                    rate_limit_retries += 1
-                    console.print(
-                        f"[yellow]AI is overloaded. Wait a minute "
-                        f"({rate_limit_retries}/{RATE_LIMIT_RETRIES})[/yellow]"
-                    )
-                    time.sleep(RATE_LIMIT_COOLDOWN_SEC)
-                elif e.code >= 500 and server_retries < len(_5XX_BACKOFF_SEC):
-                    delay = _5XX_BACKOFF_SEC[server_retries]
-                    server_retries += 1
-                    console.print(f"[yellow]Server error {e.code}. Retrying in {delay}s...[/yellow]")
-                    time.sleep(delay)
-                else:
-                    raise
-
-    def _waiting(self, label: str):
-        """Animated status while waiting (compact view); a plain line in verbose view."""
-        if self.verbose:
-            console.print(f"[bold blue]{label}[/bold blue]")
-            return nullcontext()
-        return console.status(f"[bold blue]{label}[/bold blue]", spinner="dots")
+            status, body = self._generate(self._payload())
+            if status == 200:
+                return gemini.parse_response(body)
+            message = gemini.error_message(body, status)
+            if status == 429:
+                if "PerDay" in str(body):
+                    print(red("Daily quota (RPD) reached. Try again tomorrow."))
+                    raise GeminiError(status, message, body)
+                if rate_limit_retries >= RATE_LIMIT_RETRIES:
+                    print(red(f"Still rate limited after {RATE_LIMIT_RETRIES} cooldowns. Stopping this turn."))
+                    raise GeminiError(status, message, body)
+                rate_limit_retries += 1
+                print(yellow(
+                    f"AI is overloaded. Wait a minute ({rate_limit_retries}/{RATE_LIMIT_RETRIES})"
+                ))
+                time.sleep(RATE_LIMIT_COOLDOWN_SEC)
+            elif status >= 500 and server_retries < len(_5XX_BACKOFF_SEC):
+                delay = _5XX_BACKOFF_SEC[server_retries]
+                server_retries += 1
+                print(yellow(f"Server error {status}. Retrying in {delay}s..."))
+                time.sleep(delay)
+            else:
+                raise GeminiError(status, message, body)
 
     def run_turn(self, prompt: str):
-        with self._waiting("thinking..."):
-            response = self._send(expand_mentions(prompt))
+        """Run one user request to completion. On failure, the turn is removed from history so the session stays valid."""
+        start = len(self.history)
+        try:
+            self._run_turn(prompt)
+        except Exception:
+            del self.history[start:]
+            raise
+
+    def _run_turn(self, prompt: str):
+        if self.verbose:
+            print(blue("thinking..."))
+        reply = self._send([{"text": expand_mentions(prompt)}])
 
         while True:
             # Check if model wants to call functions
-            if response.function_calls:
+            if reply.function_calls:
                 # Run every call in this batch, then send all results back in one request
                 parts = []
-                for function_call in response.function_calls:
-                    name = function_call.name
-                    args = function_call.args
+                for name, args in reply.function_calls:
                     if self.verbose:
-                        console.print(f"[yellow]⚡ Executing tool: {name}({args})[/yellow]")
+                        print(yellow(f"⚡ Executing tool: {name}({args})"))
 
-                    # Execute tool
-                    with self._waiting("working..."):
-                        result = execute_tool(name, args)
+                    result = execute_tool(name, args)
                     failed = str(result).startswith("Error")
                     if self.verbose:
-                        console.print(f"[dim]Result: {str(result)[:200]}...[/dim]")
+                        print(dim(f"Result: {str(result)[:200]}..."))
                     elif failed:
-                        console.print(f"[red]{name} failed: {escape(str(result)[:200])}[/red]")
+                        print(red(f"{name} failed: {str(result)[:200]}"))
                     else:
-                        console.print(f"[dim]{name} called[/dim]")
+                        print(dim(f"{name} called"))
                         if name == "write_file":
-                            console.print(f"[dim]{escape(args.get('file_path', ''))} edited[/dim]")
+                            print(dim(f"{args.get('file_path', '')} edited"))
 
-                    parts.append(
-                        types.Part(
-                            function_response=types.FunctionResponse(
-                                id=function_call.id,
-                                name=name,
-                                response={"result": result}
-                            )
-                        )
-                    )
-                response = self._send(parts)
+                    parts.append({"functionResponse": {"name": name, "response": {"result": result}}})
+                reply = self._send(parts)
             else:
-                if response.text:
-                    self.last_answer = response.text
-                    console.print(f"\n[bold green]Code Shellie:[/bold green]\n")
-                    console.print(Markdown(response.text))
-                    console.print()
-                    console.print(f"[dim]{self._footer()}[/dim]")
+                if reply.text:
+                    self.last_answer = reply.text
+                    print(f"\n{green('Code Shellie:')}\n")
+                    print(render_markdown(reply.text))
+                    print()
+                    print(dim(self._footer()))
                 break
 
     def _footer(self) -> str:
@@ -201,7 +189,7 @@ class Agent:
         if path == home or path.startswith(home + os.sep):
             path = "~" + path[len(home):]
         branch = _git_branch(cwd)
-        where = f"{escape(path)} ({escape(branch)})" if branch else escape(path)
+        where = f"{path} ({branch})" if branch else path
 
         if self.model_limit:
             percent = (self.prompt_token_count / self.model_limit) * 100
@@ -209,4 +197,5 @@ class Agent:
         else:
             ctx = f"ctx {self.prompt_token_count:,}"
         view = "verbose" if self.verbose else "compact"
-        return f"{where} | {escape(self.model)} | {ctx} | {view}"
+        return f"{where} | {self.model} | {ctx} | {view}"
+

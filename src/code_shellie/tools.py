@@ -1,9 +1,7 @@
-from google.genai import types
-import os
-import subprocess
 from pathlib import Path
 
 from .mcp_client import get_manager
+from .shell import run_command
 
 def read_file(file_path: str) -> str:
     """Read contents of a file."""
@@ -44,24 +42,7 @@ def list_directory(dir_path: str = ".") -> str:
 
 def run_shell_command(command: str) -> str:
     """Run a shell command and return its output."""
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
-        output = result.stdout
-        if result.stderr:
-            output += f"\nSTDERR:\n{result.stderr}"
-        if result.returncode != 0:
-            output += f"\n[Exit code: {result.returncode}]"
-        return output.strip() if output.strip() else "[Command executed with no output]"
-    except subprocess.TimeoutExpired:
-        return "Error: Command timed out after 60 seconds."
-    except Exception as e:
-        return f"Error executing command: {e}"
+    return run_command(command)
 
 # Tool implementations registry
 TOOL_FUNCTIONS = {
@@ -71,83 +52,69 @@ TOOL_FUNCTIONS = {
     "run_shell_command": run_shell_command,
 }
 
-# Gemini Function Declarations using google.genai.types
-GEMINI_TOOLS = types.Tool(
-    function_declarations=[
-        types.FunctionDeclaration(
-            name="read_file",
-            description="Read and return the text contents of a file.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "file_path": types.Schema(
-                        type=types.Type.STRING,
-                        description="Path of the file to read."
-                    )
+# Gemini function declarations as plain dicts (REST field names, OpenAPI-style schema)
+TOOL_DECLARATIONS = [
+    {
+        "name": "read_file",
+        "description": "Read and return the text contents of a file.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "file_path": {"type": "STRING", "description": "Path of the file to read."},
+            },
+            "required": ["file_path"],
+        },
+    },
+    {
+        "name": "write_file",
+        "description": "Write text content to a file (creates parent directories if needed).",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "file_path": {"type": "STRING", "description": "Path of the file to write."},
+                "content": {"type": "STRING", "description": "The text content to write into the file."},
+            },
+            "required": ["file_path", "content"],
+        },
+    },
+    {
+        "name": "list_directory",
+        "description": "List files and directories in a given path (ignores hidden files).",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "dir_path": {
+                    "type": "STRING",
+                    "description": "Directory path to list (defaults to current directory '.' if omitted).",
                 },
-                required=["file_path"],
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="write_file",
-            description="Write text content to a file (creates parent directories if needed).",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "file_path": types.Schema(
-                        type=types.Type.STRING,
-                        description="Path of the file to write."
-                    ),
-                    "content": types.Schema(
-                        type=types.Type.STRING,
-                        description="The text content to write into the file."
-                    ),
-                },
-                required=["file_path", "content"],
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="list_directory",
-            description="List files and directories in a given path (ignores hidden files).",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "dir_path": types.Schema(
-                        type=types.Type.STRING,
-                        description="Directory path to list (defaults to current directory '.' if omitted)."
-                    )
-                },
-                required=[],
-            ),
-        ),
-        types.FunctionDeclaration(
-            name="run_shell_command",
-            description="Execute a bash shell command and return output.",
-            parameters=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "command": types.Schema(
-                        type=types.Type.STRING,
-                        description="The shell command to execute."
-                    )
-                },
-                required=["command"],
-            ),
-        ),
-    ]
-)
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "run_shell_command",
+        "description": "Execute a bash shell command and return output.",
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "command": {"type": "STRING", "description": "The shell command to execute."},
+            },
+            "required": ["command"],
+        },
+    },
+]
 
-# Compatibility aliases for core.py
-TOOL_DECLARATIONS = GEMINI_TOOLS
-TOOL_MAP = TOOL_FUNCTIONS
+def all_declarations() -> list:
+    """Built-in declarations plus the tools of connected MCP servers."""
+    return [*TOOL_DECLARATIONS, *get_manager().declarations()]
 
 def execute_tool(name: str, args: dict) -> str:
     manager = get_manager()
     if manager.has_tool(name):
         return manager.call(name, args)
-    if name not in TOOL_MAP:
+    if name not in TOOL_FUNCTIONS:
         return f"Error: Tool '{name}' not found."
     try:
-        return TOOL_MAP[name](**args)
+        return TOOL_FUNCTIONS[name](**args)
     except Exception as e:
         return f"Error executing tool '{name}': {e}"

@@ -1,8 +1,7 @@
 import pytest
-from prompt_toolkit.document import Document
 
 from code_shellie import skills
-from code_shellie.completion import SlashCompleter
+from code_shellie.completion import slash_completions
 from code_shellie.core import Agent
 
 @pytest.fixture
@@ -62,8 +61,7 @@ def test_agent_instruction_follows_enabled_skills(home):
     assert agent._build_instruction() == "base instruction"
 
 def test_skill_names_complete_as_commands(home):
-    completions = [c.text for c in SlashCompleter().get_completions(Document("/pyth"), None)]
-    assert completions == ["/python-test"]
+    assert slash_completions("/pyth") == ["/python-test"]
 
 def test_skill_completion_stops_at_whitespace(home):
-    assert list(SlashCompleter().get_completions(Document("/skill enable "), None)) == []
+    assert slash_completions("/skill enable ") == []

@@ -1,78 +1,55 @@
-import os
+import argparse
 import subprocess
 import sys
-import click
-from prompt_toolkit import PromptSession
-from prompt_toolkit.application import run_in_terminal
-from prompt_toolkit.completion import merge_completers
-from prompt_toolkit.formatted_text import ANSI
-from prompt_toolkit.key_binding import KeyBindings
-from google.genai import errors
-from rich.console import Console
+
 from .config import get_api_key, get_model_name, save_model
 from .setup import run_setup
 from .core import Agent
 from .clipboard import copy_to_clipboard
-from .completion import MentionCompleter, SlashCompleter
+from .completion import complete
+from .gemini import GeminiError
+from .line_editor import LineEditor
 from .mcp_client import get_manager, shutdown_mcp
 from .skills import disable_skill, enable_skill, enabled_skills, list_skills
-from rich.markup import escape
+from .term import bold, cyan, dim, green, red, yellow
 
-console = Console()
+CLEAR_SCREEN = "\x1b[2J\x1b[H"
+
 
 def _print_skills():
     skills = list_skills()
     if not skills:
-        console.print("No skills installed. Add one at [bold]~/.config/shellie-code/skills/<name>/SKILL.md[/bold].")
+        print("No skills installed. Add one at ~/.config/shellie-code/skills/<name>/SKILL.md.")
         return
     enabled = set(enabled_skills())
-    console.print("[bold yellow]Skills:[/bold yellow]")
+    print(yellow("Skills:"))
     for name, description in skills.items():
-        state = "[green]on[/green] " if name in enabled else "[dim]off[/dim]"
-        console.print(f"  {state} [cyan]/{name}[/cyan] - {escape(description)}")
+        state = green("on ") if name in enabled else dim("off")
+        print(f"  {state} {cyan('/' + name)} - {description}")
 
-def _repl_key_bindings(toggle_view) -> KeyBindings:
-    """Enter submits; Alt+Enter and Ctrl+J insert a newline. Pasted text is inserted as-is, so it never submits early.
-    Ctrl+O switches between the compact and verbose output views."""
-    bindings = KeyBindings()
 
-    @bindings.add("enter")
-    def _submit(event):
-        event.current_buffer.validate_and_handle()
-
-    @bindings.add("escape", "enter")
-    @bindings.add("c-j")
-    def _newline(event):
-        event.current_buffer.insert_text("\n")
-
-    @bindings.add("c-o")
-    def _toggle_view(event):
-        view = toggle_view()
-        run_in_terminal(lambda: console.print(f"[dim]Output view: {view}[/dim]"))
-
-    return bindings
-
-@click.command()
-@click.argument("prompt", required=False)
-def main(prompt):
-    """Code Shellie: Your AI Coding Agent"""
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Code Shellie: Your AI Coding Agent")
+    parser.add_argument("prompt", nargs="?", help="run one request and exit; omit for the interactive REPL")
+    args = parser.parse_args(argv)
     try:
-        run(prompt)
+        run(args.prompt)
     finally:
-        # Close MCP sessions while threads still work; atexit is too late for that
+        # Forget MCP connections before the interpreter exits
         shutdown_mcp()
+
 
 def run(prompt):
     api_key = get_api_key()
     if not api_key:
-        console.print("[yellow]No API key found. Entering setup mode...[/yellow]")
+        print(yellow("No API key found. Entering setup mode..."))
         run_setup()
 
     try:
         agent = Agent()
     except Exception as e:
-        console.print(f"[bold red]Error initializing agent: {e}[/bold red]")
-        console.print("Run [bold]codesh /setup[/bold] to reconfigure.")
+        print(red(f"Error initializing agent: {e}"))
+        print("Run " + bold("codesh /setup") + " to reconfigure.")
         sys.exit(1)
 
     if prompt:
@@ -80,107 +57,100 @@ def run(prompt):
             run_setup()
             return
         if prompt == "/clear":
-            console.clear()
+            print(CLEAR_SCREEN, end="")
             return
         if prompt == "/reset":
             agent.reset_chat()
-            console.print("[green]Conversation history reset.[/green]")
+            print(green("Conversation history reset."))
             return
         if prompt.startswith("!"):
             # Execute shell command directly
             cmd = prompt[1:].strip()
-            console.print(f"[cyan]Running shell: {cmd}[/cyan]")
+            print(cyan(f"Running shell: {cmd}"))
             subprocess.run(cmd, shell=True)
             return
         if prompt.startswith("/"):
-            console.print(f"[red]no such command: {prompt.split()[0]}[/red]")
+            print(red(f"no such command: {prompt.split()[0]}"))
             return
 
         try:
             agent.run_turn(prompt)
-        except errors.APIError as e:
-            console.print(f"[red]Request failed: {e.message or e}[/red]")
+        except GeminiError as e:
+            print(red(f"Request failed: {e.message}"))
         return
 
     # Interactive REPL mode
-    console.print("[bold cyan]Welcome to Code Shellie (Interactive REPL)[/bold cyan]")
-    console.print("Type your instructions, '!command' to run shell, '/setup' to reconfigure, or 'exit'/'/exit' to quit.")
-    console.print("Enter submits; Alt+Enter or Ctrl+J adds a newline. Pasted multi-line text stays in one prompt.")
-    console.print("Output is compact by default; Ctrl+O at the prompt switches to verbose (tool arguments and results).\n")
+    print(bold(cyan("Welcome to Code Shellie (Interactive REPL)")))
+    print("Type your instructions, '!command' to run shell, '/setup' to reconfigure, or 'exit'/'/exit' to quit.")
+    print("Enter submits; Alt+Enter or Ctrl+J adds a newline. Pasted multi-line text stays in one prompt.")
+    print("Tab completes commands and @paths. Output is compact by default; Ctrl+O switches to verbose (tool arguments and results).\n")
 
     def toggle_view():
         # Class-level, so the view survives /model, /setup and skill changes that re-create the agent
         Agent.verbose = not Agent.verbose
         return "verbose" if Agent.verbose else "compact"
 
-    completer = merge_completers([SlashCompleter(), MentionCompleter()])
-    session = PromptSession(
-        completer=completer,
-        complete_while_typing=True,
-        multiline=True,
-        key_bindings=_repl_key_bindings(toggle_view),
-        prompt_continuation=lambda width, line, wrap: ANSI("\x1b[1;32m...\x1b[0m "),
-    )
+    editor = LineEditor(completer=complete, on_toggle_view=toggle_view)
     while True:
         try:
-            user_input = session.prompt(ANSI("\x1b[1;32mcodesh>\x1b[0m ")).strip()
+            user_input = editor.read().strip()
             if not user_input:
                 continue
             if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
                 break
             if user_input == "/help":
-                console.print("[bold yellow]Available Commands:[/bold yellow]")
-                console.print("  [cyan]/help[/cyan]    - Show this help message")
-                console.print("  [cyan]/setup[/cyan]   - Reconfigure Gemini API credentials and model")
-                console.print("  [cyan]/model[/cyan]   - Show or change the Gemini model (/model <name>)")
-                console.print("  [cyan]/mcp[/cyan]     - Show configured MCP servers and their tools")
-                console.print("  [cyan]/context[/cyan] - Show current context usage")
-                console.print("  [cyan]/clear[/cyan]   - Clear the terminal screen")
-                console.print("  [cyan]/reset[/cyan]   - Reset conversation history / chat session")
-                console.print("  [cyan]/copy[/cyan]    - Copy the last answer to the clipboard")
-                console.print("  [cyan]/skills[/cyan]  - List skills and whether each is enabled")
-                console.print("  [cyan]/skill enable|disable <name>[/cyan] - Turn a skill on or off")
-                console.print("  [cyan]/<skill>[/cyan] - Enable a skill by name")
-                console.print("  [cyan]Ctrl+O[/cyan]   - Switch between compact and verbose output")
-                console.print("  [cyan]!command[/cyan] - Run a shell command directly")
-                console.print("  [cyan]@path[/cyan]    - Attach a file or directory listing to your message")
-                console.print("  [cyan]exit/quit, /exit, /quit[/cyan] - Exit the REPL")
+                print(yellow("Available Commands:"))
+                print(f"  {cyan('/help')}    - Show this help message")
+                print(f"  {cyan('/setup')}   - Reconfigure Gemini API credentials and model")
+                print(f"  {cyan('/model')}   - Show or change the Gemini model (/model <name>)")
+                print(f"  {cyan('/mcp')}     - Show configured MCP servers and their tools")
+                print(f"  {cyan('/context')} - Show current context usage")
+                print(f"  {cyan('/clear')}   - Clear the terminal screen")
+                print(f"  {cyan('/reset')}   - Reset conversation history / chat session")
+                print(f"  {cyan('/copy')}    - Copy the last answer to the clipboard")
+                print(f"  {cyan('/skills')}  - List skills and whether each is enabled")
+                print(f"  {cyan('/skill enable|disable <name>')} - Turn a skill on or off")
+                print(f"  {cyan('/<skill>')} - Enable a skill by name")
+                print(f"  {cyan('Ctrl+O')}   - Switch between compact and verbose output")
+                print(f"  {cyan('!command')} - Run a shell command directly")
+                print(f"  {cyan('@path')}    - Attach a file or directory listing to your message")
+                print(f"  {cyan('exit/quit, /exit, /quit')} - Exit the REPL")
                 continue
             if user_input == "/mcp":
                 get_manager().print_status()
                 continue
             if user_input == "/context":
-                console.print(f"Context: {agent.prompt_token_count:,} / {agent.model_limit:,} tokens")
-                console.print(f"Session total: {agent.total_token_count:,} tokens")
+                print(f"Context: {agent.prompt_token_count:,} / {agent.model_limit or 0:,} tokens")
+                print(f"Session total: {agent.total_token_count:,} tokens")
                 continue
             if user_input == "/clear":
-                console.clear()
+                print(CLEAR_SCREEN, end="")
                 continue
             if user_input == "/reset":
                 agent.reset_chat()
-                console.print("[green]Conversation history reset.[/green]")
+                print(green("Conversation history reset."))
                 continue
             if user_input == "/copy":
                 if not agent.last_answer:
-                    console.print("[yellow]No answer to copy yet.[/yellow]")
+                    print(yellow("No answer to copy yet."))
                 elif tool := copy_to_clipboard(agent.last_answer):
-                    console.print(f"[green]Copied the last answer to the clipboard ({tool}).[/green]")
+                    print(green(f"Copied the last answer to the clipboard ({tool})."))
                 else:
-                    console.print("[red]No clipboard tool found. Install wl-clipboard, xclip, or xsel.[/red]")
+                    print(red("No clipboard tool found. Install wl-clipboard, xclip, or xsel."))
                 continue
             if user_input == "/setup":
                 run_setup()
-                agent = Agent() # re-init
+                agent = Agent()  # re-init
                 continue
             if user_input == "/model" or user_input.startswith("/model "):
                 name = user_input[len("/model"):].strip()
                 if not name:
-                    console.print(f"Current model: [bold]{get_model_name()}[/bold]")
-                    console.print("Usage: /model <name>, e.g. /model gemini-2.5-pro")
+                    print(f"Current model: {bold(get_model_name())}")
+                    print("Usage: /model <name>, e.g. /model gemini-2.5-pro")
                     continue
                 save_model(name)
-                agent = Agent() # re-init so the new model takes effect
-                console.print(f"Model set to [bold]{name}[/bold] (saved). Conversation history was reset.")
+                agent = Agent()  # re-init so the new model takes effect
+                print(f"Model set to {bold(name)} (saved). Conversation history was reset.")
                 continue
             if user_input == "/skills":
                 _print_skills()
@@ -188,21 +158,21 @@ def run(prompt):
             if user_input == "/skill" or user_input.startswith("/skill "):
                 parts = user_input.split()
                 if len(parts) != 3 or parts[1] not in ("enable", "disable"):
-                    console.print("Usage: /skill enable <name> or /skill disable <name>. See /skills.")
+                    print("Usage: /skill enable <name> or /skill disable <name>. See /skills.")
                     continue
                 action, name = parts[1], parts[2]
                 if action == "enable":
                     if not enable_skill(name):
-                        console.print(f"[red]No skill named {escape(name)}. See /skills.[/red]")
+                        print(red(f"No skill named {name}. See /skills."))
                         continue
                     agent.refresh_skills()
-                    console.print(f"Skill [cyan]/{escape(name)}[/cyan] enabled. Conversation history was reset.")
+                    print(f"Skill {cyan('/' + name)} enabled. Conversation history was reset.")
                 else:
                     if not disable_skill(name):
-                        console.print(f"Skill [cyan]/{escape(name)}[/cyan] is not enabled.")
+                        print(f"Skill {cyan('/' + name)} is not enabled.")
                         continue
                     agent.refresh_skills()
-                    console.print(f"Skill [cyan]/{escape(name)}[/cyan] disabled. Conversation history was reset.")
+                    print(f"Skill {cyan('/' + name)} disabled. Conversation history was reset.")
                 continue
             if user_input.startswith("!"):
                 cmd = user_input[1:].strip()
@@ -214,23 +184,23 @@ def run(prompt):
                 if skill_name not in enabled_skills():
                     enable_skill(skill_name)
                     agent.refresh_skills()
-                    console.print(f"Skill [cyan]/{escape(skill_name)}[/cyan] enabled. Conversation history was reset.")
+                    print(f"Skill {cyan('/' + skill_name)} enabled. Conversation history was reset.")
                 user_input = f"Follow the /{skill_name} skill instructions in your system prompt."
                 if skill_args.strip():
                     user_input += f" Arguments: {skill_args.strip()}"
             if user_input.startswith("/"):
-                console.print(f"[red]no such command: {user_input.split()[0]}[/red]")
+                print(red(f"no such command: {user_input.split()[0]}"))
                 continue
 
             try:
                 agent.run_turn(user_input)
             except Exception as e:
                 # Keep the session and its history; the user can retry the prompt
-                message = getattr(e, "message", None) or e
-                console.print(f"[red]Request failed: {message}[/red]")
+                print(red(f"Request failed: {getattr(e, 'message', None) or e}"))
         except (KeyboardInterrupt, EOFError):
-            console.print("\n[cyan]Goodbye![/cyan]")
+            print(cyan("\nGoodbye!"))
             break
+
 
 if __name__ == "__main__":
     main()
