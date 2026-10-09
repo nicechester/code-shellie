@@ -287,14 +287,15 @@ Code Shellie can use tools from [Model Context Protocol](https://modelcontextpro
 ```
 
 - A server with `url` is reached over streamable HTTP. Optional `headers` are sent with each request.
-- A server with `command` (stdio transport) is not supported yet. It is reported by `/mcp` as failed and skipped, so move it to an HTTP server or remove it from the file.
+- A server with `command` is launched as a local subprocess and spoken to over stdin and stdout (stdio transport). `args` and `env` are optional. The child gets your environment plus the `env` values.
+- A server with `url` is reached over streamable HTTP. Optional `headers` are sent with each request.
 - `${VAR}` in `command`, `args`, `env`, `url`, and `headers` is replaced with the value of the environment variable `VAR`, so tokens can stay out of the file. An unset variable becomes an empty string.
 - Each tool is exposed to the model as `mcp__<server>__<tool>`.
 - Servers connect when `codesh` starts. A server that fails to start (bad command, unreachable URL, rejected auth) is reported and skipped; the others still load.
 - Use `/mcp` in the REPL to see each server's status and tool list.
 - Tool calls time out after 60 seconds. Server errors are passed back to the model as text.
 
-Only the `url` and `headers` fields are used. Responses may be plain JSON or a `text/event-stream`. An SSE-only server (the older transport) will not connect.
+HTTP servers may answer with plain JSON or a `text/event-stream`. An SSE-only server (the older transport) will not connect. A stdio server that exits, never answers `initialize`, or fails to start is reported by `/mcp` with its last stderr line, and the other servers still load. Stopping `codesh` stops the stdio servers it started, including their child processes.
 
 ### Web search
 

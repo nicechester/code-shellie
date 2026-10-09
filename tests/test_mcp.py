@@ -57,13 +57,6 @@ def test_connects_lists_and_calls_tools(server):
     assert manager.call("mcp__demo__echo", {"text": "hi"}) == "echo: hi"
 
 
-def test_stdio_servers_are_reported_as_unsupported(capsys):
-    manager = MCPManager({"local": {"command": "npx", "args": []}}).start()
-
-    assert "not supported" in manager.errors["local"]
-    assert manager.declarations() == []
-
-
 def test_unreachable_server_is_reported_and_skipped(capsys):
     manager = MCPManager({"down": {"url": "http://127.0.0.1:1/mcp"}}).start()
 
