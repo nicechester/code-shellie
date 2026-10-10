@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/master/ins
 The script downloads the `master` branch from GitHub into `~/.local/share/codesh/` and installs from there. To install a different version, set `CODESH_REF` to a tag or commit:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/master/install.sh | CODESH_REF=v0.1.0 bash
+curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/master/install.sh | CODESH_REF=1.0.0 bash
 ```
 
 Run the same command again to upgrade. The source is replaced each time, and the virtual environment in `~/.local/share/codesh/venv/` is reused.
