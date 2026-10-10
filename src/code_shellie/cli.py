@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 
-from .config import get_api_key, get_model_name, save_model
+from .config import CONFIG_DIR, get_api_key, get_model_name, save_model
 from . import __version__, sessions
 from .setup import run_setup
 from .core import Agent
@@ -13,7 +13,7 @@ from . import gemini
 from .gemini import GeminiError
 from .line_editor import LineEditor
 from .mcp_client import get_manager, shutdown_mcp
-from .skills import disable_skill, enable_skill, enabled_skills, list_skills, skill_instructions
+from .skills import disable_skill, enable_skill, enabled_skills, list_skills, skill_instructions, skill_request
 from .term import bold, cyan, dim, green, red, yellow
 
 CLEAR_SCREEN = "\x1b[2J\x1b[H"
@@ -150,7 +150,7 @@ def run(prompt, resume=None):
         Agent.verbose = not Agent.verbose
         return "verbose" if Agent.verbose else "compact"
 
-    editor = LineEditor(completer=complete, on_toggle_view=toggle_view)
+    editor = LineEditor(completer=complete, on_toggle_view=toggle_view, history_path=CONFIG_DIR / "history.jsonl")
     while True:
         try:
             user_input = editor.read().strip()
@@ -285,9 +285,7 @@ def run(prompt, resume=None):
                     print(red(f"Cannot read skill {skill_name}. See /skills."))
                     continue
                 label = user_input
-                user_input = f"Follow these /{skill_name} skill instructions:\n\n{instructions}"
-                if skill_args.strip():
-                    user_input += f"\n\nArguments: {skill_args.strip()}"
+                user_input = skill_request(skill_name, instructions, skill_args)
             if user_input.startswith("/"):
                 print(red(f"no such command: {user_input.split()[0]}"))
                 continue

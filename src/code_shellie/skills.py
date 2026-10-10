@@ -112,3 +112,22 @@ def enabled_skills_prompt() -> str:
         "When the user sends /<name>, the full instructions of that skill are included in the message.\n"
         + "\n".join(lines)
     )
+
+
+# Added to every skill request. The skill's steps are the only work to do, and it stops where the skill says to.
+SKILL_RULES = (
+    "Rules for running a skill:\n"
+    "- Follow the steps in order, and stop after the last one.\n"
+    "- If a step asks for confirmation, show what you found, end your reply with the question, and make no more tool calls until the user answers.\n"
+    "- Do not merge or create pull requests, push, or commit unless the user asks for that in this message.\n"
+    "- Do not start other skills on your own.\n"
+    "- If a step names an agent or tool that is not available, do that work yourself."
+)
+
+
+def skill_request(name: str, instructions: str, args: str = "") -> str:
+    """The message sent to the model when a skill is run: its instructions, the rules, then any arguments."""
+    request = f"Follow these /{name} skill instructions:\n\n{instructions}\n\n{SKILL_RULES}"
+    if args.strip():
+        request += f"\n\nArguments: {args.strip()}"
+    return request
