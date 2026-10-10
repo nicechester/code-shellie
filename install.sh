@@ -16,7 +16,7 @@ fi
 INSTALL_HOME="$HOME/.local/share/codesh"
 
 # 2. Find the source. In a checkout, install that tree. Under 'curl | bash' there is no script file,
-#    so download the GitHub archive for CODESH_REF (default master) and install from that.
+#    so download the GitHub archive for CODESH_REF (default main) and install from that.
 SCRIPT_PATH="${BASH_SOURCE[0]:-}"
 if [ -n "$SCRIPT_PATH" ] && [ -f "$SCRIPT_PATH" ] && grep -q '^name = "code-shellie"' "$(dirname "$SCRIPT_PATH")/pyproject.toml" 2>/dev/null; then
     SRC_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
@@ -27,7 +27,7 @@ else
         echo "Error: curl is required to download Code Shellie."
         exit 1
     fi
-    REF="${CODESH_REF:-master}"
+    REF="${CODESH_REF:-main}"
     ARCHIVE_URL="${CODESH_ARCHIVE_URL:-https://github.com/nicechester/code-shellie/archive/${REF}.tar.gz}"
 
     # Download and unpack into a staging directory first, so a failed download leaves the current install alone
