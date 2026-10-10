@@ -32,7 +32,21 @@ Code Shellie (`codesh`) is a Gemini-powered coding agent for your local terminal
 
 ## Installation
 
-From the project root:
+Install with one command, from anywhere (needs Python 3.8 or newer and `curl`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nicechester/codeshellie/master/install.sh | bash
+```
+
+The script downloads the `master` branch from GitHub into `~/.local/share/codesh/` and installs from there. To install a different version, set `CODESH_REF` to a tag or commit:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nicechester/codeshellie/master/install.sh | CODESH_REF=v0.1.0 bash
+```
+
+Run the same command again to upgrade. The source is replaced each time, and the virtual environment in `~/.local/share/codesh/venv/` is reused.
+
+If you have a clone of the repository, run the script from the project root instead:
 
 ```bash
 ./install.sh
@@ -40,10 +54,12 @@ From the project root:
 
 The script:
 
-1. Creates `venv/` in the project directory if it is missing or broken.
-2. Installs dependencies and the package in editable mode (`pip install -e .`).
-3. Links `~/.local/bin/codesh` to the virtual environment's `codesh` executable.
-4. Warns if `~/.local/bin` is not on your `PATH`.
+1. Checks that Python 3.8 or newer is available, and stops with a message if not.
+2. Finds the source: the checkout it is run from, or the downloaded archive when run through `curl`.
+3. Creates the virtual environment (`venv/` in the checkout, or `~/.local/share/codesh/venv/` for the one-line install) if it is missing or broken.
+4. Installs dependencies and the package in editable mode (`pip install -e`).
+5. Links `~/.local/bin/codesh` to the virtual environment's `codesh` executable.
+6. Warns if `~/.local/bin` is not on your `PATH`.
 
 If the warning appears, add this to `~/.bashrc` or `~/.zshrc`:
 
@@ -53,7 +69,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Then open a new shell and run `codesh`.
 
-To reinstall after moving the project directory, run `./install.sh` again. The virtual environment's scripts store absolute paths, so the script rebuilds `venv/` when it is broken.
+To reinstall after moving a checkout, run `./install.sh` again. The virtual environment's scripts store absolute paths, so the script rebuilds the venv when it is broken.
 
 ## Quick start
 
