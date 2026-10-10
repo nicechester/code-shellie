@@ -92,3 +92,14 @@ def test_skill_names_complete_as_commands(home):
 
 def test_skill_completion_stops_at_whitespace(home):
     assert slash_completions("/skill enable ") == []
+
+def test_skill_request_includes_rules_and_arguments():
+    request = skills.skill_request("tackle", "Step 1: find the issue.", " 34 ")
+    assert request.startswith("Follow these /tackle skill instructions:\n\nStep 1: find the issue.")
+    assert skills.SKILL_RULES in request
+    assert request.endswith("Arguments: 34")
+
+def test_skill_request_without_arguments():
+    request = skills.skill_request("docs", "Write docs.")
+    assert "Arguments:" not in request
+    assert "Do not merge or create pull requests" in request

@@ -83,16 +83,60 @@ By default the output is compact. While the agent works, an animated `thinking..
 
 Press `Ctrl+O` at the prompt to switch to verbose output, which shows each tool's arguments and a truncated result. Press it again to go back to compact. The current view is shown in the footer after each answer. The setting is kept when the model or skills change. The switch works only at the prompt, not while the agent is running a turn.
 
+Answers are shown with basic Markdown styling: headings, lists, block quotes, code blocks, **bold**, *italic*, and `inline code`. Other Markdown is printed as written.
+
+Each answer ends with a footer line: the working directory and git branch, the model, the context size of the request against the model's limit, the number of files the turn wrote, and the current output view.
+
+If an answer says a change was made but the turn wrote no file, codesh prints a warning. Check with `/diff` or `git status`.
+
 #### Multi-line prompts and copy
 
 | Key | Action |
 |---|---|
 | `Enter` | Submit the prompt |
 | `Alt+Enter` or `Ctrl+J` | Insert a newline without submitting |
+| `Left` / `Right` | Move the cursor one character |
+| `Home` / `End`, or `Ctrl+A` / `Ctrl+E` | Move to the start or end of the line |
+| `Backspace` / `Delete` or `Ctrl+D` | Delete before or under the cursor. `Ctrl+D` on an empty line exits |
+| `Up` / `Down` | Move between lines of a multi-line prompt. On the first or last line, recall earlier or later prompts from history |
+| `Ctrl+U` | Clear the line |
+| `Tab` | Complete the word before the cursor |
 | `Ctrl+O` | Switch between compact and verbose output |
 | Paste | A pasted multi-line block stays in one prompt and is not submitted line by line. Review it, then press `Enter` |
 
 The prompt area grows to fit the input, and arrow keys and editing work across lines.
+
+Submitted prompts are kept in `~/.config/codesh/history.jsonl`, one entry per line, and the last 500 are recalled with `Up` in later sessions. Blank prompts and a repeat of the previous prompt are not saved. Recalling an entry and then moving away discards any edits made to it. Commands starting with `!` or `/` are saved too.
+
+How `Up` and `Down` choose between moving the cursor and recalling history:
+
+```mermaid
+flowchart TD
+    A[Up or Down pressed] --> B{Up: cursor below the first line?<br/>Down: cursor above the last line?}
+    B -- yes --> C[Move the cursor to the same column on the adjacent line]
+    B -- no --> D{Which key?}
+    D -- Up --> E{Older entry exists?}
+    E -- yes --> F[Show the older entry, cursor at its end]
+    E -- no --> G[Do nothing]
+    D -- Down --> H{Browsing history?}
+    H -- no --> G
+    H -- yes --> I{Next step is past the newest?}
+    I -- yes --> J[Restore the draft that was being typed]
+    I -- no --> K[Show the newer entry, cursor at its end]
+```
+
+When a prompt is submitted, the history is updated and saved:
+
+```mermaid
+flowchart LR
+    S[Enter pressed] --> T{Blank, or same as the last entry?}
+    T -- yes --> X[Not saved]
+    T -- no --> U[Append to history, keep the last 500]
+    U --> V[Rewrite history.jsonl]
+    V --> W{Write fails?}
+    W -- yes --> Y[Ignored, the REPL continues]
+    W -- no --> Z[Saved]
+```
 
 To copy the agent's last answer, type `/copy`. It sends the answer's Markdown source (without the footer) to the system clipboard using the first available tool: `pbcopy` (macOS), `wl-copy` (Wayland), `xclip`, or `xsel` (X11). If none is installed, it prints a message and nothing is copied.
 
@@ -112,7 +156,7 @@ codesh '!git status'
 codesh /setup
 ```
 
-A one-shot prompt that starts with `/` is treated as a command. Only `/setup` is supported in this mode. Other slash commands print `no such command` (see [Slash commands](#slash-commands)).
+A one-shot prompt that starts with `!` runs that shell command. A prompt that starts with `/` is a command, and only `/setup`, `/clear`, and `/reset` work in this mode. Other slash commands print `no such command` (see [Slash commands](#slash-commands)).
 
 ### Slash commands
 
@@ -123,10 +167,12 @@ Input that starts with `/` is a command. It never goes to the model.
 | `/help` | REPL | List available commands |
 | `/setup` | REPL, one-shot | Change the Gemini API key and model name |
 | `/model` | REPL | Show the current model. `/model <name>` switches to that model and saves it |
+| `/context` | REPL | Show the tokens in the last request against the model's limit, and the total tokens used this session |
+| `/clear` | REPL, one-shot | Clear the terminal screen. The conversation is kept |
 | `/mcp` | REPL | Show configured MCP servers, their connection status, and their tools |
 | `/copy` | REPL | Copy the last answer to the system clipboard |
 | `/sessions` | REPL | List saved sessions with their IDs and descriptions |
-| `/reset` | REPL | Clear the chat and delete the current session file, so nothing is left to resume |
+| `/reset` | REPL, one-shot | Clear the chat and delete the current session file, so nothing is left to resume |
 | `/sources` | REPL | Show the full URLs behind the last web search. Resolves the links on demand; does not call the model |
 | `/diff` | REPL | Show the diffs of the files the last turn wrote, against their contents before that turn. Files written by shell commands are not included |
 | `/skills` | REPL | List installed skills and whether each one is enabled |
@@ -160,6 +206,7 @@ Create the folder and file, then:
 
 - `/skills` lists every skill and marks the enabled ones `on`.
 - `/python-test` (or `/skill enable python-test`) enables the skill. The system prompt lists it by name and description.
+- Running a skill (for example `/python-test` with arguments) sends its instructions with a fixed set of rules: follow the steps in order and stop at the end, stop and ask when a step asks for confirmation, do not merge, create pull requests, push, or commit unless the message asks for it, and do not start other skills on your own.
 - Typing `/python-test` with a request sends the full `SKILL.md` instructions with that message. The instructions apply to that turn only.
 - `/skill disable python-test` turns it off.
 
@@ -200,7 +247,9 @@ Rules:
 
 ### Exiting
 
-In the REPL, type `exit`, `quit`, `/exit`, or `/quit`, or press Ctrl+D. Ctrl+C also leaves the REPL.
+In the REPL, type `exit`, `quit`, `/exit`, or `/quit`, or press Ctrl+D at an empty prompt. Ctrl+C at the prompt also leaves the REPL.
+
+Ctrl+C during a request stops that request, and the request is dropped from the conversation. Ctrl+C during a `!` command stops the command and keeps codesh running.
 
 ### Resuming a session
 
@@ -213,7 +262,7 @@ Resume this session with: codesh --resume ad632a21
 - `codesh --resume` continues the most recent session started in the current directory.
 - `codesh --resume <id>` continues a specific session, from any directory. If the directory has changed, you get a note, because file paths in the history may no longer apply.
 - `codesh --sessions` lists saved sessions with their IDs, times, directories, and descriptions. `/sessions` does the same in the REPL.
-- A session's description is its first prompt, cut to one line.
+- A session's description is its first prompt, with whitespace collapsed and cut to 60 characters.
 - `/reset` deletes the current session file, so nothing is left to resume, and starts a new chat.
 - A session expires after 24 hours without a turn. Expired sessions are deleted when `codesh` starts, and can no longer be listed or resumed. Change the limit with `SESSION_TTL_HOURS` in `~/.config/codesh/.env`, for example `SESSION_TTL_HOURS=72`. A value of `0` turns expiry off.
 
@@ -234,6 +283,9 @@ Code Shellie reads its settings from `~/.config/codesh/`. Everything else is opt
 | `~/.config/codesh/.env` | API key and model name (written by `/setup`) |
 | `~/.config/codesh/SYSTEM.md` | Instructions added to every session, for every project |
 | `~/.config/codesh/mcp.json` | MCP server definitions |
+| `~/.config/codesh/skills/<name>/SKILL.md`, `~/.config/codesh/skills.json` | Installed skills, and the registry of which ones are enabled (see [Skills](#skills)) |
+| `~/.config/codesh/code/<repo>-<hash>/index.txt` | Cached project summary for each git repository, rebuilt when `HEAD` moves (see [Project context](#project-context)) |
+| `~/.config/codesh/history.jsonl` | Prompt history for `Up` and `Down` at the prompt, last 500 entries (see [Multi-line prompts and copy](#multi-line-prompts-and-copy)) |
 | `~/.config/codesh/sessions/` | Saved conversations, one JSON file per session, expiring after `SESSION_TTL_HOURS` (default 24) (see [Resuming a session](#resuming-a-session)) |
 | `.shellie/PROJECT.md` (in a project) | Instructions added for that project |
 | `.shellie/MEMORY.md` (in a project) | Lessons the agent saved with `remember`, added to later sessions (see [Project lessons](#project-lessons)) |
@@ -311,7 +363,7 @@ The model can call these tools. There are no approval prompts: a tool call runs 
 | `read_file(file_path)` | Returns the text of a file. Returns an error message if the file does not exist. |
 | `write_file(file_path, content)` | Writes text to a file, creating parent directories as needed. Overwrites existing files. |
 | `list_directory(dir_path)` | Lists a directory, folders first. Hidden entries (starting with `.`) are omitted. |
-| `run_shell_command(command)` | Runs a command through the shell and returns stdout, stderr, and any non-zero exit code. Times out after 60 seconds. |
+| `run_shell_command(command)` | Runs a command through `/bin/sh` and returns stdout, stderr, and any non-zero exit code. Times out after 60 seconds. Output longer than 50,000 characters is cut and marked as truncated. The command does not receive `GEMINI_API_KEY` in its environment. |
 | `remember(fact)` | Saves one confirmed project lesson to `.shellie/MEMORY.md` (see [Project lessons](#project-lessons)). |
 | `execute_web_search(query)` | Looks up current information with Google Search grounding and returns the answer text. It uses `SEARCH_MODEL` and runs as a separate request, so it does not add to the chat history. |
 | `mcp__<server>__<tool>` | Tools from configured MCP servers (see below). |
@@ -345,7 +397,7 @@ Code Shellie can use tools from [Model Context Protocol](https://modelcontextpro
 - Each tool is exposed to the model as `mcp__<server>__<tool>`.
 - Servers connect when `codesh` starts. A server that fails to start (bad command, unreachable URL, rejected auth) is reported and skipped; the others still load.
 - Use `/mcp` in the REPL to see each server's status and tool list.
-- Tool calls time out after 60 seconds. Server errors are passed back to the model as text.
+- Connecting to a server times out after 30 seconds, and each tool call times out after 60 seconds. Server errors are passed back to the model as text.
 
 HTTP servers may answer with plain JSON or a `text/event-stream`. An SSE-only server (the older transport) will not connect. A stdio server that exits, never answers `initialize`, or fails to start is reported by `/mcp` with its last stderr line, and the other servers still load. Stopping `codesh` stops the stdio servers it started, including their child processes.
 
@@ -357,15 +409,16 @@ HTTP servers may answer with plain JSON or a `text/event-stream`. An SSE-only se
 SEARCH_MODEL=gemma-4-26b-a4b-it
 ```
 
-The search has its own quota, separate from the chat model's limits. If the search request fails, the tool returns `Web search failed (HTTP <status>)` and the chat continues.
+The search has its own quota, separate from the chat model's limits. A server error (5xx) is retried after 1, 2, and 4 seconds. If the search still fails, the tool returns `Web search failed (HTTP <status>)` and the chat continues.
 
 ## Rate limits and errors
 
 The Gemini client follows this policy:
 
-- **Per-minute quota (429, RPM):** waits for the delay the API suggests, retries once, and stops if the limit is hit again.
-- **Daily quota (429, RPD):** stops immediately and reports that the daily quota is reached.
-- **Server errors (5xx):** retries up to three times with 1, 2, and 4 second delays, then stops.
+- **Per-minute quota (429, RPM or input tokens):** prints `AI is overloaded. Wait a minute (n/3)`, waits 60 seconds, and retries. After three cooldowns it prints `Still rate limited after 3 cooldowns. Stopping this turn.`
+- **Daily quota (429, RPD):** stops immediately and prints `Daily quota (RPD) reached. Try again tomorrow.`
+- **Server errors (5xx):** prints `Server error <code>. Retrying in <n>s...` and retries after 1, 2, and 4 seconds, then stops.
+- **No response:** each request to Gemini waits up to 120 seconds. A request that fails at the transport level is reported as an error, like the other API errors below.
 
 Other API errors (for example, an invalid API key or a rejected model name) are shown as `Request failed: ...`. The turn is dropped from the history and the session continues, so you can fix the setting and retry.
 
@@ -377,6 +430,7 @@ codeshellie/
 ├── install.sh              # sets up venv/ and links codesh into ~/.local/bin
 ├── README.md
 ├── docs/DESIGN.md          # design notes
+├── tests/                  # pytest suite
 └── src/code_shellie/
     ├── cli.py              # entry point, REPL, slash commands, one-shot mode
     ├── core.py             # Agent: Gemini chat, system prompt, tool-call loop, retry policy
@@ -385,7 +439,7 @@ codeshellie/
     ├── shell.py            # runs run_shell_command with a timeout and output limit
     ├── mcp_client.py       # MCP server connections over HTTP, tool discovery, /mcp status
     ├── http.py             # JSON HTTP helpers on urllib
-    ├── line_editor.py      # REPL line editor (termios): paste, newlines, Tab, Ctrl+O
+    ├── line_editor.py      # REPL line editor (termios): cursor editing, history, paste, newlines, Tab, Ctrl+O
     ├── term.py             # ANSI colors, off when output is not a terminal
     ├── config.py           # reads and writes ~/.config/codesh/.env
     ├── setup.py            # interactive API key and model setup
@@ -394,6 +448,10 @@ codeshellie/
     ├── layout.py           # cached project summary and git file index for the startup context
     ├── summary.py          # parses README, pyproject.toml, CLAUDE.md, and module docstrings
     ├── mentions.py         # expands @path attachments
+    ├── markdown.py         # renders answers in the terminal: headings, lists, code, emphasis
+    ├── clipboard.py        # /copy: uses pbcopy, wl-copy, xclip, or xsel
+    ├── sessions.py         # saved conversations: write, load, list, and expire
+    ├── skills.py           # skills: list, enable, disable, and read SKILL.md
     └── completion.py       # tab completion for slash commands and @paths
 ```
 
