@@ -269,6 +269,36 @@ def test_no_warning_when_reply_claims_change_and_a_write_succeeded(monkeypatch, 
     assert "no file was written" not in capsys.readouterr().out
 
 
+def test_no_warning_when_mcp_call_created_an_issue_and_reply_names_no_file(monkeypatch, capsys, compact_view):
+    agent = make_agent([ok(function_calls=[("mcp__github__issue_write", {"method": "create"})]),
+                        ok(text="I created issue #14 in connect-four.")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: '{"number": 14}')
+
+    agent.run_turn("create an issue")
+
+    assert "no file was written" not in capsys.readouterr().out
+
+
+def test_warns_when_reply_says_a_file_was_edited_but_nothing_was_written(monkeypatch, capsys, compact_view):
+    agent = make_agent([ok(function_calls=[("read_file", {"file_path": "README.md"})]),
+                        ok(text="I edited README.md to add the install note.")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "body")
+
+    agent.run_turn("update the readme")
+
+    assert "no file was written this turn" in capsys.readouterr().out
+
+
+def test_no_warning_for_generic_change_claim_without_a_file(monkeypatch, capsys, compact_view):
+    agent = make_agent([ok(function_calls=[("read_file", {"file_path": "a.py"})]),
+                        ok(text="I implemented the change in the parser logic.")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "body")
+
+    agent.run_turn("implement it")
+
+    assert "no file was written" not in capsys.readouterr().out
+
+
 def test_no_warning_for_answer_without_change_claim(monkeypatch, capsys, compact_view):
     agent = make_agent([ok(function_calls=[("read_file", {"file_path": "a.py"})]),
                         ok(text="The function returns a list of paths.")])
