@@ -247,3 +247,33 @@ def test_footer_shows_zero_files_written_when_write_failed(monkeypatch, capsys, 
     agent.run_turn("write it")
 
     assert "files written: 0" in capsys.readouterr().out
+
+
+def test_warns_when_reply_claims_change_but_nothing_was_written(monkeypatch, capsys, compact_view):
+    agent = make_agent([ok(function_calls=[("read_file", {"file_path": "a.py"})]),
+                        ok(text="I implemented the /diff command in cli.py.")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "body")
+
+    agent.run_turn("add diff")
+
+    assert "no file was written this turn" in capsys.readouterr().out
+
+
+def test_no_warning_when_reply_claims_change_and_a_write_succeeded(monkeypatch, capsys, compact_view):
+    agent = make_agent([ok(function_calls=[("write_file", {"file_path": "a.py", "content": "x"})]),
+                        ok(text="I implemented the change.")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "Successfully wrote to a.py")
+
+    agent.run_turn("add diff")
+
+    assert "no file was written" not in capsys.readouterr().out
+
+
+def test_no_warning_for_answer_without_change_claim(monkeypatch, capsys, compact_view):
+    agent = make_agent([ok(function_calls=[("read_file", {"file_path": "a.py"})]),
+                        ok(text="The function returns a list of paths.")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "body")
+
+    agent.run_turn("what does it return")
+
+    assert "no file was written" not in capsys.readouterr().out

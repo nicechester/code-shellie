@@ -1,5 +1,6 @@
 import difflib
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -38,6 +39,8 @@ FAILURE_PREFIXES = ("Error", "Web search failed")
 
 RATE_LIMIT_COOLDOWN_SEC = 60
 RATE_LIMIT_RETRIES = 3
+# Words that say the reply made a change, such as 'I implemented the fix'
+CHANGE_CLAIM = re.compile(r"\b(implemented|edited|modified|changed|updated|added|created|wrote|fixed|refactored)\b", re.I)
 _5XX_BACKOFF_SEC = (1, 2, 4)
 
 class Agent:
@@ -232,6 +235,8 @@ class Agent:
                     print()
                     if searched and gemini.last_sources:
                         print(dim("Sources: type /sources for the full links."))
+                    if not self.last_edits and CHANGE_CLAIM.search(reply.text):
+                        print(yellow("Warning: this reply describes changes, but no file was written this turn. Check with /diff or git status."))
                     print(dim(self._footer()))
                 break
 
