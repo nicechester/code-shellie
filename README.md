@@ -144,7 +144,7 @@ flowchart TD
 When a prompt is submitted, the history is updated and saved:
 
 ```mermaid
-flowchart LR
+flowchart TD
     S[Enter pressed] --> T{Blank, or same as the last entry?}
     T -- yes --> X[Not saved]
     T -- no --> U[Append to history, keep the last 500]
