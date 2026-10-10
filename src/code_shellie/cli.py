@@ -23,7 +23,7 @@ LATEST = "latest"  # --resume without an id: the latest session for this directo
 def _print_skills():
     skills = list_skills()
     if not skills:
-        print("No skills installed. Add one at ~/.config/shellie-code/skills/<name>/SKILL.md.")
+        print("No skills installed. Add one at ~/.config/codesh/skills/<name>/SKILL.md.")
         return
     enabled = set(enabled_skills())
     print(yellow("Skills:"))
@@ -266,7 +266,11 @@ def run(prompt, resume=None):
                 continue
             if user_input.startswith("!"):
                 cmd = user_input[1:].strip()
-                subprocess.run(cmd, shell=True)
+                try:
+                    subprocess.run(cmd, shell=True)
+                except KeyboardInterrupt:
+                    # Ctrl+C stops the command, not codesh; the shell has already received the signal too
+                    print()
                 continue
             skill_name, _, skill_args = user_input[1:].partition(" ")
             label = None
@@ -290,6 +294,9 @@ def run(prompt, resume=None):
 
             try:
                 agent.run_turn(user_input, label=label)
+            except KeyboardInterrupt:
+                # Ctrl+C stops this request only; run_turn has already dropped it from the history
+                print(yellow("\nStopped. The request was dropped; the conversation is unchanged."))
             except Exception as e:
                 # Keep the session and its history; the user can retry the prompt
                 print(red(f"Request failed: {getattr(e, 'message', None) or e}"))

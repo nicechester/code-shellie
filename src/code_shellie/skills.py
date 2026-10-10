@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 def _config_dir() -> Path:
-    return Path.home() / ".config" / "shellie-code"
+    return Path.home() / ".config" / "codesh"
 
 def _skill_file(name: str) -> Path:
     return _config_dir() / "skills" / name / "SKILL.md"
@@ -26,7 +26,7 @@ def _description(name: str, skill_md: Path) -> str:
     return f"Run /{name} workflow"
 
 def list_skills() -> dict:
-    """Map each installed skill name to its description. Skills live in ~/.config/shellie-code/skills/<name>/SKILL.md."""
+    """Map each installed skill name to its description. Skills live in ~/.config/codesh/skills/<name>/SKILL.md."""
     root = _config_dir() / "skills"
     skills = {}
     if not root.is_dir():

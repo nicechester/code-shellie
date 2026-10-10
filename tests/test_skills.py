@@ -11,7 +11,7 @@ def home(tmp_path, monkeypatch):
     """Point HOME at a temp directory with two skills installed."""
     monkeypatch.setenv("HOME", str(tmp_path))
     for name, desc in (("python-test", "Run and write Python tests"), ("docs", "Write documentation")):
-        folder = tmp_path / ".config" / "shellie-code" / "skills" / name
+        folder = tmp_path / ".config" / "codesh" / "skills" / name
         folder.mkdir(parents=True)
         (folder / "SKILL.md").write_text(f"description: {desc}\n\nBody of {name}.", encoding="utf-8")
     return tmp_path
@@ -57,16 +57,16 @@ def test_skill_instructions_returns_full_skill_md(home):
 
 def test_registry_records_description_and_path(home):
     skills.enable_skill("docs")
-    registry = json.loads((home / ".config" / "shellie-code" / "skills.json").read_text(encoding="utf-8"))
+    registry = json.loads((home / ".config" / "codesh" / "skills.json").read_text(encoding="utf-8"))
     assert registry == {
         "docs": {
             "description": "Write documentation",
-            "path": str(home / ".config" / "shellie-code" / "skills" / "docs" / "SKILL.md"),
+            "path": str(home / ".config" / "codesh" / "skills" / "docs" / "SKILL.md"),
         }
     }
 
 def test_legacy_enabled_file_still_works(home):
-    config = home / ".config" / "shellie-code"
+    config = home / ".config" / "codesh"
     (config / "enabled_skills.json").write_text(json.dumps(["docs"]), encoding="utf-8")
     assert skills.enabled_skills() == ["docs"]
     assert "- /docs: Write documentation" in skills.enabled_skills_prompt()

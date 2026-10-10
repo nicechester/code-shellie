@@ -18,4 +18,4 @@ def run_setup():
     model_name = _ask("Gemini Model Name", "gemini-3.5-flash-lite")
 
     save_config(api_key, model_name)
-    print(green("Configuration saved successfully to ~/.config/shellie-code/.env!") + "\n")
+    print(green("Configuration saved successfully to ~/.config/codesh/.env!") + "\n")

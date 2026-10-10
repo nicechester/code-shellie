@@ -1,6 +1,6 @@
 """MCP (Model Context Protocol) client over stdio and streamable HTTP. Standard library only.
 
-Servers are configured in ~/.config/shellie-code/mcp.json:
+Servers are configured in ~/.config/codesh/mcp.json:
 
     {
       "mcpServers": {

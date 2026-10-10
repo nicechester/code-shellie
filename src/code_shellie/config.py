@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-CONFIG_DIR = Path.home() / ".config" / "shellie-code"
+CONFIG_DIR = Path.home() / ".config" / "codesh"
 ENV_PATH = CONFIG_DIR / ".env"
 
 
@@ -31,7 +31,7 @@ def load_environment():
 
 
 def save_config(api_key: str, model_name: str):
-    """Save configuration to ~/.config/shellie-code/.env"""
+    """Save configuration to ~/.config/codesh/.env"""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with open(ENV_PATH, "w") as f:
         f.write(f"GEMINI_API_KEY={api_key}\n")
@@ -42,7 +42,7 @@ def save_config(api_key: str, model_name: str):
 
 
 def save_model(model_name: str):
-    """Update GEMINI_MODEL in ~/.config/shellie-code/.env, keeping the other settings."""
+    """Update GEMINI_MODEL in ~/.config/codesh/.env, keeping the other settings."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     lines = ENV_PATH.read_text().splitlines() if ENV_PATH.exists() else []
     lines = [line for line in lines if not line.startswith("GEMINI_MODEL=")]

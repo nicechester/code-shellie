@@ -3,6 +3,7 @@ from pathlib import Path
 from .config import get_api_key, get_search_model
 from .gemini import search as gemini_search
 from .mcp_client import get_manager
+from .memory import remember as remember_lesson
 from .shell import run_command
 
 def read_file(file_path: str) -> str:
@@ -57,6 +58,7 @@ TOOL_FUNCTIONS = {
     "list_directory": list_directory,
     "run_shell_command": run_shell_command,
     "execute_web_search": execute_web_search,
+    "remember": remember_lesson,
 }
 
 # Gemini function declarations as plain dicts (REST field names, OpenAPI-style schema)
@@ -118,6 +120,20 @@ TOOL_DECLARATIONS = [
                 "query": {"type": "STRING", "description": "Search query"},
             },
             "required": ["query"],
+        },
+    },
+    {
+        "name": "remember",
+        "description": (
+            "Save one confirmed, non-obvious project lesson to .shellie/MEMORY.md. "
+            "Saved lessons are added to the system prompt in later sessions."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "fact": {"type": "STRING", "description": "One short line stating the lesson."},
+            },
+            "required": ["fact"],
         },
     },
 ]

@@ -1,4 +1,4 @@
-"""Saved conversations: one JSON file per session under ~/.config/shellie-code/sessions/.
+"""Saved conversations: one JSON file per session under ~/.config/codesh/sessions/.
 
 A session file holds the chat history plus what is needed to list and resume it. Files are
 written with mode 0600, since they can contain file contents and command output.

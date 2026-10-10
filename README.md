@@ -143,7 +143,7 @@ Note that this applies to anything starting with `/`, including paths typed as a
 A skill is a reusable set of instructions the agent follows when it is enabled. Each skill is a folder with a `SKILL.md` file:
 
 ```
-~/.config/shellie-code/skills/
+~/.config/codesh/skills/
 └── python-test/
     └── SKILL.md
 ```
@@ -163,7 +163,7 @@ Create the folder and file, then:
 - Typing `/python-test` with a request sends the full `SKILL.md` instructions with that message. The instructions apply to that turn only.
 - `/skill disable python-test` turns it off.
 
-Enabled skills are recorded in `~/.config/shellie-code/skills.json`, with each skill's description and the path to its `SKILL.md`. They stay on across sessions. Enabling or disabling a skill starts a new conversation, the same as `/model`. Older installs that have `enabled_skills.json` keep their enabled skills until the first change is saved to `skills.json`.
+Enabled skills are recorded in `~/.config/codesh/skills.json`, with each skill's description and the path to its `SKILL.md`. They stay on across sessions. Enabling or disabling a skill starts a new conversation, the same as `/model`. Older installs that have `enabled_skills.json` keep their enabled skills until the first change is saved to `skills.json`.
 
 Skills only change the instructions. They do not add tools.
 
@@ -204,7 +204,7 @@ In the REPL, type `exit`, `quit`, `/exit`, or `/quit`, or press Ctrl+D. Ctrl+C a
 
 ### Resuming a session
 
-Each completed turn is saved to `~/.config/shellie-code/sessions/<id>.json`, with the conversation so far. When a session has at least one turn, leaving `codesh` prints its ID:
+Each completed turn is saved to `~/.config/codesh/sessions/<id>.json`, with the conversation so far. When a session has at least one turn, leaving `codesh` prints its ID:
 
 ```
 Resume this session with: codesh --resume ad632a21
@@ -215,7 +215,7 @@ Resume this session with: codesh --resume ad632a21
 - `codesh --sessions` lists saved sessions with their IDs, times, directories, and descriptions. `/sessions` does the same in the REPL.
 - A session's description is its first prompt, cut to one line.
 - `/reset` deletes the current session file, so nothing is left to resume, and starts a new chat.
-- A session expires after 24 hours without a turn. Expired sessions are deleted when `codesh` starts, and can no longer be listed or resumed. Change the limit with `SESSION_TTL_HOURS` in `~/.config/shellie-code/.env`, for example `SESSION_TTL_HOURS=72`. A value of `0` turns expiry off.
+- A session expires after 24 hours without a turn. Expired sessions are deleted when `codesh` starts, and can no longer be listed or resumed. Change the limit with `SESSION_TTL_HOURS` in `~/.config/codesh/.env`, for example `SESSION_TTL_HOURS=72`. A value of `0` turns expiry off.
 
 Pass a prompt before `--resume`, not after it, so the prompt is not taken as the session ID:
 
@@ -227,15 +227,16 @@ Session files can contain file contents and command output. They are created rea
 
 ## Configuration
 
-Code Shellie reads its settings from `~/.config/shellie-code/`. Everything else is optional.
+Code Shellie reads its settings from `~/.config/codesh/`. Everything else is optional.
 
 | File | Purpose |
 |---|---|
-| `~/.config/shellie-code/.env` | API key and model name (written by `/setup`) |
-| `~/.config/shellie-code/SYSTEM.md` | Instructions added to every session, for every project |
-| `~/.config/shellie-code/mcp.json` | MCP server definitions |
-| `~/.config/shellie-code/sessions/` | Saved conversations, one JSON file per session, expiring after `SESSION_TTL_HOURS` (default 24) (see [Resuming a session](#resuming-a-session)) |
+| `~/.config/codesh/.env` | API key and model name (written by `/setup`) |
+| `~/.config/codesh/SYSTEM.md` | Instructions added to every session, for every project |
+| `~/.config/codesh/mcp.json` | MCP server definitions |
+| `~/.config/codesh/sessions/` | Saved conversations, one JSON file per session, expiring after `SESSION_TTL_HOURS` (default 24) (see [Resuming a session](#resuming-a-session)) |
 | `.shellie/PROJECT.md` (in a project) | Instructions added for that project |
+| `.shellie/MEMORY.md` (in a project) | Lessons the agent saved with `remember`, added to later sessions (see [Project lessons](#project-lessons)) |
 
 ### API key and model
 
@@ -248,7 +249,7 @@ Setup asks for:
 - **Gemini API Key.** Entered hidden. Press Enter to keep the current key.
 - **Gemini Model Name.** Defaults to `gemini-3.5-flash-lite`.
 
-Settings are saved to `~/.config/shellie-code/.env`:
+Settings are saved to `~/.config/codesh/.env`:
 
 ```
 GEMINI_API_KEY=your-key
@@ -261,7 +262,7 @@ The model runs at temperature 0.2.
 
 ### System context
 
-Create `~/.config/shellie-code/SYSTEM.md` to give the agent standing instructions for every project. Its contents are added to the system prompt under "System Context". For example:
+Create `~/.config/codesh/SYSTEM.md` to give the agent standing instructions for every project. Its contents are added to the system prompt under "System Context". For example:
 
 ```markdown
 - Prefer Python 3.12 idioms.
@@ -280,6 +281,18 @@ Create `.shellie/PROJECT.md` in a project's root. The agent looks for it in the 
 - Do not modify files under migrations/.
 ```
 
+### Project lessons
+
+The agent can save lessons it has confirmed, such as where a tool lives or a command that only works after a fix. It does this with the `remember` tool, which appends one line to `.shellie/MEMORY.md` in the project. Each saved fact is printed in the output, so you can review it. The file is loaded under "Project Lessons" in the system prompt at the start of every later session.
+
+- Duplicate facts are not saved twice.
+- The file holds at most 100 entries, and a fact can be at most 300 characters. When the file is full, the agent merges or removes entries itself.
+- `.shellie/` is git-ignored by this repo's `.gitignore`, so lessons stay on your machine. To review or delete entries, open `.shellie/MEMORY.md` and edit it directly.
+
+### Project layout
+
+Inside a git repository, the agent gets a file index of the project at startup, so it can find files without `list_directory` calls. The index lists the files per directory, from git's view (tracked files and untracked files that are not ignored). It is built without the model and cached in `~/.config/codesh/code/<repo>-<hash>/index.txt`, outside the repository. It is rebuilt when `HEAD` moves to a new commit. Uncommitted new files show up in the index after their next commit. Long directories and long indexes are truncated with a "... more" note. Outside git, no index is added.
+
 ## Tools available to the model
 
 The model can call these tools. There are no approval prompts: a tool call runs as soon as the model makes it.
@@ -290,6 +303,7 @@ The model can call these tools. There are no approval prompts: a tool call runs 
 | `write_file(file_path, content)` | Writes text to a file, creating parent directories as needed. Overwrites existing files. |
 | `list_directory(dir_path)` | Lists a directory, folders first. Hidden entries (starting with `.`) are omitted. |
 | `run_shell_command(command)` | Runs a command through the shell and returns stdout, stderr, and any non-zero exit code. Times out after 60 seconds. |
+| `remember(fact)` | Saves one confirmed project lesson to `.shellie/MEMORY.md` (see [Project lessons](#project-lessons)). |
 | `execute_web_search(query)` | Looks up current information with Google Search grounding and returns the answer text. It uses `SEARCH_MODEL` and runs as a separate request, so it does not add to the chat history. |
 | `mcp__<server>__<tool>` | Tools from configured MCP servers (see below). |
 
@@ -297,7 +311,7 @@ Because tools run without confirmation, the agent can change or delete files and
 
 ## MCP servers
 
-Code Shellie can use tools from [Model Context Protocol](https://modelcontextprotocol.io) servers. Add them to `~/.config/shellie-code/mcp.json`:
+Code Shellie can use tools from [Model Context Protocol](https://modelcontextprotocol.io) servers. Add them to `~/.config/codesh/mcp.json`:
 
 ```json
 {
@@ -328,7 +342,7 @@ HTTP servers may answer with plain JSON or a `text/event-stream`. An SSE-only se
 
 ### Web search
 
-`execute_web_search` uses the model in `SEARCH_MODEL`, which defaults to `gemma-4-26b-a4b-it`. Set it in `~/.config/shellie-code/.env`, in the environment, or in a local `.env`:
+`execute_web_search` uses the model in `SEARCH_MODEL`, which defaults to `gemma-4-26b-a4b-it`. Set it in `~/.config/codesh/.env`, in the environment, or in a local `.env`:
 
 ```
 SEARCH_MODEL=gemma-4-26b-a4b-it
@@ -364,9 +378,11 @@ codeshellie/
     ├── http.py             # JSON HTTP helpers on urllib
     ├── line_editor.py      # REPL line editor (termios): paste, newlines, Tab, Ctrl+O
     ├── term.py             # ANSI colors, off when output is not a terminal
-    ├── config.py           # reads and writes ~/.config/shellie-code/.env
+    ├── config.py           # reads and writes ~/.config/codesh/.env
     ├── setup.py            # interactive API key and model setup
-    ├── context.py          # loads SYSTEM.md and .shellie/PROJECT.md
+    ├── context.py          # loads SYSTEM.md, .shellie/PROJECT.md, and .shellie/MEMORY.md
+    ├── memory.py           # remember tool and .shellie/MEMORY.md read/write
+    ├── layout.py           # cached git file index for the startup context
     ├── mentions.py         # expands @path attachments
     └── completion.py       # tab completion for slash commands and @paths
 ```
@@ -376,7 +392,7 @@ Run the tests with `venv/bin/pytest`.
 ## Troubleshooting
 
 **`No API key found. Entering setup mode...`**
-Run through setup, or write `GEMINI_API_KEY` to `~/.config/shellie-code/.env`.
+Run through setup, or write `GEMINI_API_KEY` to `~/.config/codesh/.env`.
 
 **`Error initializing agent: ...`**
 No API key was available when the agent started. Run `/setup` (or `codesh /setup`).

@@ -11,6 +11,7 @@ from .context import load_contexts
 from .gemini import GeminiError
 from .markdown import render as render_markdown
 from .mcp_client import get_manager
+from .memory import MEMORY_GUIDANCE
 from .mentions import expand_mentions
 from .skills import enabled_skills_prompt
 from .term import blue, dim, green, red, yellow
@@ -58,7 +59,8 @@ class Agent:
         base_instruction = (
             "You are Code Shellie, an expert AI software engineering agent. "
             "You have access to local files and shell execution tools. "
-            "Always inspect, test, and explain your changes clearly."
+            "Always inspect, test, and explain your changes clearly. "
+            f"{MEMORY_GUIDANCE}"
         )
         extra_context = load_contexts()
         if extra_context:
@@ -143,7 +145,7 @@ class Agent:
         self.history.append({"role": "user", "parts": parts})
         try:
             reply = self._request_with_retries()
-        except Exception:
+        except (Exception, KeyboardInterrupt):  # Ctrl+C during a request also drops the turn
             self.history.pop()
             raise
         if reply.content:  # a blocked reply has no content; keep the history well-formed
@@ -187,7 +189,7 @@ class Agent:
         self.last_edits = {}
         try:
             self._run_turn(prompt)
-        except Exception:
+        except (Exception, KeyboardInterrupt):  # Ctrl+C stops the turn; its messages are dropped
             del self.history[start:]
             raise
         self._save_session(label or prompt)
@@ -221,7 +223,10 @@ class Agent:
                     elif failed:
                         print(red(f"{name} failed: {str(result)[:200]}"))
                     else:
-                        print(dim(f"{name} called"))
+                        if name == "remember":
+                            print(dim(str(result)))  # the saved fact, so the user can review it
+                        else:
+                            print(dim(f"{name} called"))
                         if name == "write_file":
                             print(dim(f"{args.get('file_path', '')} edited"))
 

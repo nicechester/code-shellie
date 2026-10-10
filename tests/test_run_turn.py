@@ -277,3 +277,15 @@ def test_no_warning_for_answer_without_change_claim(monkeypatch, capsys, compact
     agent.run_turn("what does it return")
 
     assert "no file was written" not in capsys.readouterr().out
+
+
+def test_ctrl_c_during_request_drops_the_turn_and_propagates():
+    agent = make_agent([])
+
+    def interrupted(payload):
+        raise KeyboardInterrupt
+
+    agent._generate = interrupted
+    with pytest.raises(KeyboardInterrupt):
+        agent.run_turn("hello")
+    assert agent.history == []
