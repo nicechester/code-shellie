@@ -28,7 +28,7 @@ else
         exit 1
     fi
     REF="${CODESH_REF:-master}"
-    ARCHIVE_URL="${CODESH_ARCHIVE_URL:-https://github.com/nicechester/codeshellie/archive/${REF}.tar.gz}"
+    ARCHIVE_URL="${CODESH_ARCHIVE_URL:-https://github.com/nicechester/code-shellie/archive/${REF}.tar.gz}"
 
     # Download and unpack into a staging directory first, so a failed download leaves the current install alone
     STAGE="$(mktemp -d)"

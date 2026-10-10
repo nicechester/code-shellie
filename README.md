@@ -35,13 +35,13 @@ Code Shellie (`codesh`) is a Gemini-powered coding agent for your local terminal
 Install with one command, from anywhere (needs Python 3.8 or newer and `curl`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nicechester/codeshellie/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/master/install.sh | bash
 ```
 
 The script downloads the `master` branch from GitHub into `~/.local/share/codesh/` and installs from there. To install a different version, set `CODESH_REF` to a tag or commit:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nicechester/codeshellie/master/install.sh | CODESH_REF=v0.1.0 bash
+curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/master/install.sh | CODESH_REF=v0.1.0 bash
 ```
 
 Run the same command again to upgrade. The source is replaced each time, and the virtual environment in `~/.local/share/codesh/venv/` is reused.
@@ -442,7 +442,7 @@ Other API errors (for example, an invalid API key or a rejected model name) are 
 ## Project layout
 
 ```
-codeshellie/
+code-shellie/
 ├── pyproject.toml          # package metadata and dependencies; defines the `codesh` command
 ├── install.sh              # sets up venv/ and links codesh into ~/.local/bin
 ├── README.md
