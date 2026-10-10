@@ -128,6 +128,7 @@ Input that starts with `/` is a command. It never goes to the model.
 | `/sessions` | REPL | List saved sessions with their IDs and descriptions |
 | `/reset` | REPL | Clear the chat and delete the current session file, so nothing is left to resume |
 | `/sources` | REPL | Show the full URLs behind the last web search. Resolves the links on demand; does not call the model |
+| `/diff` | REPL | Show the diffs of the files the last turn wrote, against their contents before that turn. Files written by shell commands are not included |
 | `/skills` | REPL | List installed skills and whether each one is enabled |
 | `/skill enable <name>`, `/skill disable <name>` | REPL | Turn a skill on or off |
 | `/<skill-name>` | REPL | Enable a skill by typing its name as a command |

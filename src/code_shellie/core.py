@@ -1,3 +1,4 @@
+import difflib
 import os
 import subprocess
 import time
@@ -13,6 +14,13 @@ from .mentions import expand_mentions
 from .skills import enabled_skills_prompt
 from .term import blue, dim, green, red, yellow
 from .tools import all_declarations, execute_tool
+
+def _read_text_or_none(path: Path):
+    """File contents, or None if the file does not exist or cannot be read as text."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
 
 def _git_branch(cwd: Path) -> str:
     """Current git branch for cwd, or '' outside a repository or on error."""
@@ -56,6 +64,7 @@ class Agent:
         self._base_instruction = base_instruction
         self.system_instruction = self._build_instruction()
         self.history = []
+        self.last_edits = {}  # file path -> contents before the last turn's first write, or None if the file was new
         self.session = None  # metadata of the saved session this chat writes to; None until the first turn completes
         self.prompt_token_count = 0
         self.total_token_count = 0
@@ -172,6 +181,7 @@ class Agent:
         """Run one user request to completion. On failure, the turn is removed from history so the session stays valid.
         A completed turn is saved to the session file, described by label (what the user typed) or else the prompt."""
         start = len(self.history)
+        self.last_edits = {}
         try:
             self._run_turn(prompt)
         except Exception:
@@ -194,9 +204,15 @@ class Agent:
                     if self.verbose:
                         print(yellow(f"⚡ Executing tool: {name}({args})"))
 
+                    # Snapshot the file before a write so /diff can show what this turn changed
+                    target = Path(args.get("file_path", "")).expanduser() if name == "write_file" else None
+                    before = _read_text_or_none(target) if target else None
+
                     result = execute_tool(name, args)
                     searched = searched or name == "execute_web_search"
                     failed = str(result).startswith(FAILURE_PREFIXES)
+                    if target and not failed:
+                        self.last_edits.setdefault(str(target), before)
                     if self.verbose:
                         print(dim(f"Result: {str(result)[:200]}..."))
                     elif failed:
@@ -218,6 +234,22 @@ class Agent:
                         print(dim("Sources: type /sources for the full links."))
                     print(dim(self._footer()))
                 break
+
+    def edits_diff(self) -> str:
+        """Unified diff of each file the last turn wrote, from its contents before the turn to its contents now. Empty if nothing changed."""
+        chunks = []
+        for path, before in self.last_edits.items():
+            after = _read_text_or_none(Path(path))
+            if after == before:
+                continue
+            diff = difflib.unified_diff(
+                (before or "").splitlines(keepends=True),
+                (after or "").splitlines(keepends=True),
+                fromfile=f"a/{path}" if before is not None else "/dev/null",
+                tofile=f"b/{path}" if after is not None else "/dev/null",
+            )
+            chunks.append("".join(diff))
+        return "\n".join(chunk for chunk in chunks if chunk)
 
     def _footer(self) -> str:
         """Status line under each answer: model, working directory, git branch, and context usage."""

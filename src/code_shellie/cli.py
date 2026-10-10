@@ -170,6 +170,7 @@ def run(prompt, resume=None):
                 print(f"  {cyan('/copy')}    - Copy the last answer to the clipboard")
                 print(f"  {cyan('/sessions')} - List saved sessions")
                 print(f"  {cyan('/sources')} - Show the full URLs of the last web search's sources")
+                print(f"  {cyan('/diff')}    - Show the diffs of files edited in the last turn")
                 print(f"  {cyan('/skills')}  - List skills and whether each is enabled")
                 print(f"  {cyan('/skill enable|disable <name>')} - Turn a skill on or off")
                 print(f"  {cyan('/<skill>')} - Enable a skill by name")
@@ -200,6 +201,24 @@ def run(prompt, resume=None):
                     print(yellow("No sources yet. Run a web search first."))
                 for i, (title, uri) in enumerate(gemini.last_sources, 1):
                     print(f"[{i}] {title} - {gemini.resolve_url(uri)}")
+                continue
+            if user_input == "/diff":
+                if not agent.last_edits:
+                    print(yellow("No files were edited in the last turn."))
+                    continue
+                diff = agent.edits_diff()
+                if not diff:
+                    print(yellow("The files edited in the last turn have no net changes."))
+                    continue
+                for line in diff.splitlines():
+                    if line.startswith(("+++", "---")):
+                        print(dim(line))
+                    elif line.startswith("+"):
+                        print(green(line))
+                    elif line.startswith("-"):
+                        print(red(line))
+                    else:
+                        print(line)
                 continue
             if user_input == "/copy":
                 if not agent.last_answer:
