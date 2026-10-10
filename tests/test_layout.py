@@ -89,11 +89,27 @@ def test_long_directories_are_truncated(repo, monkeypatch):
 
 
 def test_total_lines_are_capped(repo, monkeypatch):
-    monkeypatch.setattr(layout, "MAX_LINES", 2)
-    text = build_index(repo, "abc")
-    lines = text.splitlines()
-    assert len(lines) == 2
-    assert lines[-1].startswith("... ") and "more directories" in lines[-1]
+    monkeypatch.setattr(layout, "MAX_LINES", 1)
+    lines = build_index(repo, "abc").splitlines()
+    listing = lines[lines.index("Files:") + 1:]
+    assert len(listing) == 1
+    assert listing[-1].startswith("... ") and "more directories" in listing[-1]
+
+
+def test_header_records_commit_and_date(repo):
+    header = build_index(repo, "abc123", today="2026-10-10").splitlines()[0]
+    assert header.startswith("Project layout (commit abc123, generated 2026-10-10,")
+
+
+def test_regeneration_is_announced_once_per_commit(repo, capsys):
+    load_layout()
+    assert "Project summary regenerated at commit" in capsys.readouterr().out
+    load_layout()  # cache hit: nothing rebuilt, nothing announced
+    assert capsys.readouterr().out == ""
+    (repo / "notes.txt").write_text("x\n")
+    _commit_all(repo, "add notes")
+    load_layout()
+    assert "Project summary regenerated" in capsys.readouterr().out
 
 
 def test_startup_context_includes_layout(repo):

@@ -1,9 +1,13 @@
-"""A file index of the current git project, built without the model and cached outside the repo."""
+"""The project summary and file index for the current git project: built without the model and cached outside the repo."""
 import hashlib
 import subprocess
 from collections import defaultdict
+from datetime import date
 from pathlib import Path
 from typing import Optional
+
+from .summary import build_summary
+from .term import dim
 
 MAX_LINES = 200
 MAX_FILES_PER_DIR = 20
@@ -27,28 +31,34 @@ def cache_path(root: Path) -> Path:
     digest = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:12]
     return Path.home() / ".config" / "codesh" / "code" / f"{root.name}-{digest}" / "index.txt"
 
-def build_index(root: Path, commit: str) -> str:
-    """One line per directory listing its files, from git's view of the project (tracked and not ignored)."""
+def build_index(root: Path, commit: str, today: Optional[str] = None) -> str:
+    """Project summary, then one line per directory listing its files (git's view: tracked and not ignored)."""
     out = _git(root, "ls-files", "-co", "--exclude-standard") or ""
     files = sorted(line for line in out.splitlines() if line)
+    today = today or date.today().isoformat()
 
     by_dir = defaultdict(list)
     for path in files:
         parent, _, name = path.rpartition("/")
         by_dir[parent or "."].append(name)
 
-    lines = [f"Project layout (commit {commit}, {len(files)} files, paths relative to {root.name}/):"]
+    listing = []
     for directory in sorted(by_dir):
         names = by_dir[directory]
         shown = ", ".join(names[:MAX_FILES_PER_DIR])
         extra = len(names) - MAX_FILES_PER_DIR
         if extra > 0:
             shown += f", ... {extra} more"
-        lines.append(f"{directory}/: {shown}")
+        listing.append(f"{directory}/: {shown}")
 
-    if len(lines) > MAX_LINES:
-        hidden = len(lines) - (MAX_LINES - 1)
-        lines = lines[:MAX_LINES - 1] + [f"... {hidden} more directories not listed"]
+    if len(listing) > MAX_LINES:
+        hidden = len(listing) - (MAX_LINES - 1)
+        listing = listing[:MAX_LINES - 1] + [f"... {hidden} more directories not listed"]
+
+    lines = [f"Project layout (commit {commit}, generated {today}, {len(files)} files, paths relative to {root.name}/):"]
+    lines.extend(build_summary(root, files))
+    lines.append("Files:")
+    lines.extend(listing)
     return "\n".join(lines)
 
 def load_layout(cwd: Optional[Path] = None) -> str:
@@ -75,5 +85,6 @@ def load_layout(cwd: Optional[Path] = None) -> str:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text + "\n", encoding="utf-8")
     except OSError:
-        pass  # the index still goes into this session's context; it is just not cached
+        pass  # the summary still goes into this session's context; it is just not cached
+    print(dim(f"Project summary regenerated at commit {commit[:7]}"))
     return text

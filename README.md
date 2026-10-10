@@ -291,7 +291,16 @@ The agent can save lessons it has confirmed, such as where a tool lives or a com
 
 ### Project layout
 
-Inside a git repository, the agent gets a file index of the project at startup, so it can find files without `list_directory` calls. The index lists the files per directory, from git's view (tracked files and untracked files that are not ignored). It is built without the model and cached in `~/.config/codesh/code/<repo>-<hash>/index.txt`, outside the repository. It is rebuilt when `HEAD` moves to a new commit. Uncommitted new files show up in the index after their next commit. Long directories and long indexes are truncated with a "... more" note. Outside git, no index is added.
+Inside a git repository, the agent gets a project summary at startup, so it can find its way around without `list_directory` calls. It is built without the model, from files the project already has, and cached in `~/.config/codesh/code/<repo>-<hash>/index.txt`, outside the repository. It is rebuilt when `HEAD` moves to a new commit, and codesh prints `Project summary regenerated at commit <sha>` when that happens.
+
+The summary has these parts, each taken from the project's own files:
+
+- **Commands and entry points:** `[project.scripts]` from `pyproject.toml`, and code blocks under README headings about install, build, test, usage, or run.
+- **Conventions:** the bullet points in `CLAUDE.md`. If there is no `CLAUDE.md`, the summary says so.
+- **Modules:** the first line of each source module's docstring. Test files are skipped.
+- **Files:** the files in each directory, from git's view (tracked files and untracked files that are not ignored).
+
+The header records the commit and the date the summary was made. Uncommitted changes to these files show up after their next commit. Long lists are truncated with a "... more" note. Outside git, no summary is added. The summary is built synchronously at startup, which takes milliseconds for a project this size.
 
 ## Tools available to the model
 
@@ -382,7 +391,8 @@ codeshellie/
     ├── setup.py            # interactive API key and model setup
     ├── context.py          # loads SYSTEM.md, .shellie/PROJECT.md, and .shellie/MEMORY.md
     ├── memory.py           # remember tool and .shellie/MEMORY.md read/write
-    ├── layout.py           # cached git file index for the startup context
+    ├── layout.py           # cached project summary and git file index for the startup context
+    ├── summary.py          # parses README, pyproject.toml, CLAUDE.md, and module docstrings
     ├── mentions.py         # expands @path attachments
     └── completion.py       # tab completion for slash commands and @paths
 ```
