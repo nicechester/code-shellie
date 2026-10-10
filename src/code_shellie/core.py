@@ -267,5 +267,6 @@ class Agent:
         else:
             ctx = f"ctx {self.prompt_token_count:,}"
         view = "verbose" if self.verbose else "compact"
-        return f"{where} | {self.model} | {ctx} | {view}"
+        written = len(self.last_edits)  # files this turn wrote successfully, so a claimed edit with 0 is visible
+        return f"{where} | {self.model} | {ctx} | files written: {written} | {view}"
 

@@ -229,3 +229,21 @@ def test_answer_without_search_has_no_sources_hint(monkeypatch, capsys, compact_
     agent.run_turn("hello")
 
     assert "/sources" not in capsys.readouterr().out
+
+
+def test_footer_counts_files_written_this_turn(monkeypatch, capsys, compact_view):
+    agent = make_agent([ok(function_calls=[("write_file", {"file_path": "a.md", "content": "x"})]), ok(text="done")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "Successfully wrote to a.md")
+
+    agent.run_turn("write it")
+
+    assert "files written: 1" in capsys.readouterr().out
+
+
+def test_footer_shows_zero_files_written_when_write_failed(monkeypatch, capsys, compact_view):
+    agent = make_agent([ok(function_calls=[("write_file", {"file_path": "a.md", "content": "x"})]), ok(text="done")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "Error: permission denied")
+
+    agent.run_turn("write it")
+
+    assert "files written: 0" in capsys.readouterr().out
