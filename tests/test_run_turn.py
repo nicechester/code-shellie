@@ -289,3 +289,32 @@ def test_ctrl_c_during_request_drops_the_turn_and_propagates():
     with pytest.raises(KeyboardInterrupt):
         agent.run_turn("hello")
     assert agent.history == []
+
+
+def test_tool_call_budget_stops_the_turn_and_reports_it(monkeypatch, capsys):
+    monkeypatch.setattr(core, "TOOL_CALL_BUDGET", 2)
+    calls = [("read_file", {"file_path": f"f{i}"}) for i in range(3)]
+    # Model asks for 3 calls (only 2 allowed), gets refusals, then asks again: the turn must end
+    agent = make_agent([ok(function_calls=calls), ok(function_calls=[("read_file", {"file_path": "x"})])])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: f"contents of {args['file_path']}")
+
+    agent.run_turn("read many")
+
+    assert len(agent._generate.requests) == 2
+    refusals = function_responses(agent._generate.requests[1][-1])
+    assert [result for _, result in refusals[:2]] == ["contents of f0", "contents of f1"]
+    assert refusals[2][1] == core.BUDGET_EXHAUSTED_RESULT
+    assert agent.history[-1]["role"] == "model"
+    assert "budget" in agent.history[-1]["parts"][0]["text"]
+    assert "Stopped" in capsys.readouterr().out
+
+
+def test_footer_shows_tool_call_count(monkeypatch):
+    agent = make_agent([ok(function_calls=[("read_file", {"file_path": "a"})]), ok(text="done")])
+    monkeypatch.setattr(core, "execute_tool", lambda name, args: "text")
+    seen = []
+    monkeypatch.setattr(Agent, "_footer", lambda self: seen.append(self.tool_calls) or "footer")
+
+    agent.run_turn("read")
+
+    assert seen == [1]

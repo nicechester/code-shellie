@@ -38,6 +38,9 @@ def _git_branch(cwd: Path) -> str:
 # Tool results that start with one of these count as failures in the compact view
 FAILURE_PREFIXES = ("Error", "Web search failed")
 
+TOOL_CALL_BUDGET = 40  # tool calls allowed in one user turn; past this the turn stops and says what is left
+BUDGET_EXHAUSTED_RESULT = "Error: the tool-call budget for this turn is used up. Stop calling tools and tell the user what is left to do."
+
 RATE_LIMIT_COOLDOWN_SEC = 60
 RATE_LIMIT_RETRIES = 3
 # Words that say the reply made a change, such as 'I implemented the fix'
@@ -195,6 +198,7 @@ class Agent:
         A completed turn is saved to the session file, described by label (what the user typed) or else the prompt."""
         start = len(self.history)
         self.last_edits = {}
+        self.tool_calls = 0
         try:
             self._run_turn(prompt)
         except (Exception, KeyboardInterrupt):  # Ctrl+C stops the turn; its messages are dropped
@@ -244,15 +248,29 @@ class Agent:
             print(blue("thinking..."))
         reply = self._send([{"text": expand_mentions(prompt)}])
         searched = False
+        refused = False  # the budget ran out and the model has been told to stop
 
         while True:
             # Check if model wants to call functions
             if reply.function_calls:
+                if refused:
+                    # The model kept asking for tools after being told to stop: end the turn here
+                    note = "Stopped: the tool-call budget for this turn ran out. Ask me to continue to pick it up."
+                    self.history.append({"role": "model", "parts": [{"text": note}]})
+                    print(yellow(note))
+                    break
                 # Run every call in this batch, then send all results back in one request
                 parts = []
                 for name, args in reply.function_calls:
                     if self.verbose:
                         print(yellow(f"⚡ Executing tool: {name}({args})"))
+
+                    self.tool_calls += 1
+                    if self.tool_calls > TOOL_CALL_BUDGET:
+                        refused = True
+                        result = BUDGET_EXHAUSTED_RESULT
+                        parts.append({"functionResponse": {"name": name, "response": {"result": result}}})
+                        continue
 
                     # Snapshot the file before a write so /diff can show what this turn changed
                     target = Path(args.get("file_path", "")).expanduser() if name == "write_file" else None
@@ -323,5 +341,5 @@ class Agent:
             ctx = f"ctx {self.prompt_token_count:,}"
         view = "verbose" if self.verbose else "compact"
         written = len(self.last_edits)  # files this turn wrote successfully, so a claimed edit with 0 is visible
-        return f"{where} | {self.model} | {ctx} | files written: {written} | {view}"
+        return f"{where} | {self.model} | {ctx} | files written: {written} | tool calls: {self.tool_calls} | {view}"
 
