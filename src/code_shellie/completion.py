@@ -14,6 +14,7 @@ BASE_SLASH_COMMANDS = (
     "/context",
     "/clear",
     "/reset",
+    "/compress",
     "/copy",
     "/sources",
     "/diff",

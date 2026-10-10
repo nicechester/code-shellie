@@ -43,6 +43,12 @@ RATE_LIMIT_RETRIES = 3
 # Words that say the reply made a change, such as 'I implemented the fix'
 CHANGE_CLAIM = re.compile(r"\b(implemented|edited|modified|changed|updated|added|created|wrote|fixed|refactored)\b", re.I)
 _5XX_BACKOFF_SEC = (1, 2, 4)
+# Turns kept verbatim by /compress; everything older is replaced by a summary
+KEEP_TURNS = 4
+SUMMARY_REQUEST = (
+    "Summarize the conversation above so it can stand in for those messages. "
+    "Keep the user's goals, decisions, file paths, and open questions. Reply with the summary only."
+)
 
 class Agent:
     # Compact view by default; the REPL flips this with Ctrl+O. Affects only what is printed, not the chat.
@@ -154,11 +160,13 @@ class Agent:
         self.total_token_count += reply.total_tokens
         return reply
 
-    def _request_with_retries(self):
+    def _request_with_retries(self, payload=None):
+        if payload is None:
+            payload = self._payload()
         rate_limit_retries = 0
         server_retries = 0
         while True:
-            status, body = self._generate(self._payload())
+            status, body = self._generate(payload)
             if status == 200:
                 return gemini.parse_response(body)
             message = gemini.error_message(body, status)
@@ -193,6 +201,43 @@ class Agent:
             del self.history[start:]
             raise
         self._save_session(label or prompt)
+
+    def _turn_starts(self) -> list:
+        """Indexes of the messages that begin a user turn: user messages with text, not tool results."""
+        return [i for i, message in enumerate(self.history)
+                if message.get("role") == "user" and any("text" in part for part in message.get("parts", []))]
+
+    def compress(self, keep: int = KEEP_TURNS) -> int:
+        """Replace all but the last `keep` turns with a summary the model writes. Returns how many turns were summarized,
+        or 0 if the chat is short enough already. If the summary request fails, the history is left as it was."""
+        starts = self._turn_starts()
+        if len(starts) <= keep:
+            return 0
+        split = starts[-keep]
+        older = self.history[:split]
+        summary_request = {
+            "contents": older + [{"role": "user", "parts": [{"text": SUMMARY_REQUEST}]}],
+            "systemInstruction": {"parts": [{"text": self.system_instruction}]},
+            "generationConfig": {"temperature": 0.2},
+        }
+        summary = self._request_with_retries(summary_request).text.strip()
+        if not summary:
+            raise GeminiError(0, "The model returned an empty summary. The conversation is unchanged.")
+
+        self.history = [
+            {"role": "user", "parts": [{"text": f"Summary of the earlier part of this conversation:\n{summary}"}]},
+            {"role": "model", "parts": [{"text": "Understood. I will continue from this summary."}]},
+        ] + self.history[split:]
+        # The footer's count should drop now, not after the next answer. Keep the old count if it cannot be fetched.
+        count = gemini.count_tokens(self.model, self.api_key, {
+            "contents": self.history,
+            "systemInstruction": {"parts": [{"text": self.system_instruction}]},
+        })
+        if count is not None:
+            self.prompt_token_count = count
+        if self.session is not None:
+            self._save_session("")
+        return len(starts) - keep
 
     def _run_turn(self, prompt: str):
         if self.verbose:

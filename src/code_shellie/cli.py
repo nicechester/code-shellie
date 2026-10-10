@@ -6,7 +6,7 @@ import sys
 from .config import CONFIG_DIR, get_api_key, get_model_name, save_model
 from . import __version__, sessions
 from .setup import run_setup
-from .core import Agent
+from .core import KEEP_TURNS, Agent
 from .clipboard import copy_to_clipboard
 from .completion import complete
 from . import gemini
@@ -167,6 +167,7 @@ def run(prompt, resume=None):
                 print(f"  {cyan('/context')} - Show current context usage")
                 print(f"  {cyan('/clear')}   - Clear the terminal screen")
                 print(f"  {cyan('/reset')}   - Reset conversation history / chat session")
+                print(f"  {cyan('/compress')} - Summarize older turns to free context space (keeps the last {KEEP_TURNS})")
                 print(f"  {cyan('/copy')}    - Copy the last answer to the clipboard")
                 print(f"  {cyan('/sessions')} - List saved sessions")
                 print(f"  {cyan('/sources')} - Show the full URLs of the last web search's sources")
@@ -192,6 +193,21 @@ def run(prompt, resume=None):
             if user_input == "/reset":
                 agent.discard_session()
                 print(green("Conversation history reset. The saved session was deleted."))
+                continue
+            if user_input == "/compress":
+                try:
+                    turns = agent.compress()
+                except KeyboardInterrupt:
+                    print(yellow("\nStopped. The conversation is unchanged."))
+                    continue
+                except Exception as e:
+                    print(red(f"Could not compress: {getattr(e, 'message', None) or e}"))
+                    continue
+                if turns == 0:
+                    print(yellow(f"Nothing to compress: the chat has {KEEP_TURNS} turns or fewer."))
+                else:
+                    print(green(f"Summarized {turns} older turn(s). The last {KEEP_TURNS} are kept as they were."))
+                    print(dim(f"Context now {agent.prompt_token_count:,} / {agent.model_limit or 0:,} tokens."))
                 continue
             if user_input == "/sessions":
                 print_sessions()

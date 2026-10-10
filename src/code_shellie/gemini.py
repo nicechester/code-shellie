@@ -46,6 +46,15 @@ def generate(model: str, api_key: str, payload: Dict[str, Any]) -> Tuple[int, Di
     return status, body
 
 
+def count_tokens(model: str, api_key: str, payload: Dict[str, Any]) -> Optional[int]:
+    """Input tokens that a request with this payload would use, or None if the count cannot be fetched."""
+    url = API_BASE + model + ":countTokens"
+    body, status, _headers = http_post_h(url, payload, headers={"x-goog-api-key": api_key}, timeout=REQUEST_TIMEOUT_SEC)
+    if status != 200 or not isinstance(body, dict) or body.get("totalTokens") is None:
+        return None
+    return int(body["totalTokens"])
+
+
 def search(query: str, model: str, api_key: str) -> str:
     """Answer a query with Google Search grounding, as a separate request that does not touch the chat history.
 

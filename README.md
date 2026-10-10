@@ -173,6 +173,7 @@ Input that starts with `/` is a command. It never goes to the model.
 | `/copy` | REPL | Copy the last answer to the system clipboard |
 | `/sessions` | REPL | List saved sessions with their IDs and descriptions |
 | `/reset` | REPL, one-shot | Clear the chat and delete the current session file, so nothing is left to resume |
+| `/compress` | REPL | Replace all but the last 4 turns with a summary the model writes, to free context space. The saved session keeps the compressed history, so `--resume` restores it |
 | `/sources` | REPL | Show the full URLs behind the last web search. Resolves the links on demand; does not call the model |
 | `/diff` | REPL | Show the diffs of the files the last turn wrote, against their contents before that turn. Files written by shell commands are not included |
 | `/skills` | REPL | List installed skills and whether each one is enabled |
