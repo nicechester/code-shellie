@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/main/insta
 The script downloads the `main` branch from GitHub into `~/.local/share/codesh/` and installs from there. To install a different version, set `CODESH_REF` to a tag or commit:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/main/install.sh | CODESH_REF=1.0.0 bash
+curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/main/install.sh | CODESH_REF=1.1.0 bash
 ```
 
 Run the same command again to upgrade. The source is replaced each time, and the virtual environment in `~/.local/share/codesh/venv/` is reused.
