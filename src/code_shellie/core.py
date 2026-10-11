@@ -7,6 +7,7 @@ from pathlib import Path
 
 from . import gemini, sessions
 from .config import get_api_key, get_model_name
+from .coding import CODING_GUIDANCE
 from .context import load_contexts
 from .gemini import GeminiError
 from .markdown import render as render_markdown
@@ -75,7 +76,8 @@ class Agent:
             "You are Code Shellie, an expert AI software engineering agent. "
             "You have access to local files and shell execution tools. "
             "Always inspect, test, and explain your changes clearly. "
-            f"{MEMORY_GUIDANCE}"
+            f"{MEMORY_GUIDANCE} "
+            f"{CODING_GUIDANCE}"
         )
         extra_context = load_contexts()
         if extra_context:
