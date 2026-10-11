@@ -44,7 +44,13 @@ BUDGET_EXHAUSTED_RESULT = "Error: the tool-call budget for this turn is used up.
 RATE_LIMIT_COOLDOWN_SEC = 60
 RATE_LIMIT_RETRIES = 3
 # Words that say the reply made a change, such as 'I implemented the fix'
-CHANGE_CLAIM = re.compile(r"\b(implemented|edited|modified|changed|updated|added|created|wrote|fixed|refactored)\b", re.I)
+# A reply that says a file was changed: a change verb near the word "file" or a source-like filename, in either order
+FILE_EDIT_CLAIM = re.compile(
+    r"\b(edited|modified|updated|changed|wrote|written|created|added|fixed|refactored|implemented)\b[^.\n]{0,60}"
+    r"(\bfiles?\b|\S+\.(py|md|js|ts|json|txt|html|css|toml|yaml|yml|sh)\b)"
+    r"|\bfiles?\b[^.\n]{0,40}\b(edited|modified|updated|changed|written|created|added)\b",
+    re.I,
+)
 _5XX_BACKOFF_SEC = (1, 2, 4)
 # Turns kept verbatim by /compress; everything older is replaced by a summary
 KEEP_TURNS = 4
@@ -303,7 +309,7 @@ class Agent:
                     print()
                     if searched and gemini.last_sources:
                         print(dim("Sources: type /sources for the full links."))
-                    if not self.last_edits and CHANGE_CLAIM.search(reply.text):
+                    if not self.last_edits and FILE_EDIT_CLAIM.search(reply.text):
                         print(yellow("Warning: this reply describes changes, but no file was written this turn. Check with /diff or git status."))
                     print(dim(self._footer()))
                 break
