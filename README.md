@@ -38,7 +38,7 @@ Install with one command, from anywhere (needs Python 3.8 or newer and `curl`):
 curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/main/install.sh | bash
 ```
 
-The script downloads the `main` branch from GitHub into `~/.local/share/codesh/` and installs from there. To install a different version, set `CODESH_REF` to a tag or commit:
+The one-line command fetches the installer from the latest GitHub release, then downloads that version's source into `~/.local/share/codesh/` and installs from there. If no release exists yet, it uses `main`. To install a different version, set `CODESH_REF` to a tag or commit:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/main/install.sh | CODESH_REF=1.1.0 bash
@@ -52,7 +52,7 @@ If you have a clone of the repository, run the script from the project root inst
 ./install.sh
 ```
 
-The script:
+`install.sh` is a small stub. From a checkout it runs `setup.sh`, which does the following:
 
 1. Checks that Python 3.8 or newer is available, and stops with a message if not.
 2. Finds the source: the checkout it is run from, or the downloaded archive when run through `curl`.
@@ -444,7 +444,8 @@ Other API errors (for example, an invalid API key or a rejected model name) are 
 ```
 code-shellie/
 ├── pyproject.toml          # package metadata and dependencies; defines the `codesh` command
-├── install.sh              # sets up venv/ and links codesh into ~/.local/bin
+├── install.sh              # small entry point for the one-line install; runs setup.sh
+├── setup.sh                # installer: sets up venv/ and links codesh into ~/.local/bin
 ├── README.md
 ├── docs/DESIGN.md          # design notes
 ├── tests/                  # pytest suite
