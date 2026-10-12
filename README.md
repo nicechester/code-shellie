@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/main/insta
 The one-line command fetches the installer from the latest GitHub release, then downloads that version's source into `~/.local/share/codesh/` and installs from there. If no release exists yet, it uses `main`. To install a different version, set `CODESH_REF` to a tag or commit:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/main/install.sh | CODESH_REF=1.1.0 bash
+curl -fsSL https://raw.githubusercontent.com/nicechester/code-shellie/main/install.sh | CODESH_REF=1.1.1 bash
 ```
 
 Run the same command again to upgrade. The source is replaced each time, and the virtual environment in `~/.local/share/codesh/venv/` is reused.
