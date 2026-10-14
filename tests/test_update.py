@@ -58,12 +58,51 @@ def test_failed_update_passes_ref_to_installer_and_reports_failure(monkeypatch, 
         return SimpleNamespace(returncode=1)
 
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    monkeypatch.setattr(cli, "_find_checkout_root", lambda: None)
 
     assert cli.run_update("does-not-exist") is False
     assert [call[0][0] for call in calls] == ["curl", "bash"]
     output = capsys.readouterr().out
     assert "Update failed" in output
     assert "Restart codesh" not in output
+
+
+def test_cloned_install_uses_git_pull(monkeypatch):
+    calls = []
+    root = Path("/tmp/code-shellie-checkout")
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        if args[:3] == ["git", "status", "--porcelain"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if args[:3] == ["git", "symbolic-ref", "--quiet"]:
+            return SimpleNamespace(returncode=0, stdout="main\n", stderr="")
+        if args[:2] == ["git", "rev-parse"]:
+            return SimpleNamespace(returncode=0, stdout="origin/main\n", stderr="")
+        if args[:2] == ["git", "pull"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if args[:4] == [cli.sys.executable, "-m", "pip", "install"]:
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        raise AssertionError(args)
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert cli._update_checkout(root, "main") is True
+    assert [call[0] for call in calls if call[0][:2] == ["git", "pull"]] == [
+        ["git", "pull", "--ff-only"]
+    ]
+
+
+def test_cloned_install_refuses_local_changes(monkeypatch, capsys):
+    def fake_run(args, **kwargs):
+        if args[:3] == ["git", "status", "--porcelain"]:
+            return SimpleNamespace(returncode=0, stdout=" M cli.py\n", stderr="")
+        raise AssertionError("git pull must not run with local changes")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert cli._update_checkout(Path("/tmp/code-shellie-checkout"), "main") is False
+    assert "local changes" in capsys.readouterr().out
 
 
 def test_missing_ref_download_keeps_installed_source(tmp_path):

@@ -44,29 +44,89 @@ def _installed_version():
     return (result.stdout.strip() or "unknown") if result.returncode == 0 else "unknown"
 
 
+def _find_checkout_root():
+    """Find the source checkout when this install imports code directly from a Git worktree."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / ".git").exists() and (parent / "pyproject.toml").is_file():
+            return parent
+    return None
+
+
+def _update_checkout(root, ref):
+    """Fast-forward the cloned installation and refresh its editable package metadata."""
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True, check=False)
+
+    try:
+        status = git("status", "--porcelain")
+        if status.returncode != 0:
+            print(red(f"Update failed: could not inspect the checkout: {status.stderr.strip()}"))
+            return False
+        if status.stdout.strip():
+            print(red("Update failed: the cloned install has local changes. Commit or stash them before updating."))
+            return False
+
+        branch = git("symbolic-ref", "--quiet", "--short", "HEAD")
+        if branch.returncode != 0:
+            print(red("Update failed: the cloned install is on a detached HEAD. Switch to a branch and retry."))
+            return False
+        upstream = git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+        if upstream.returncode != 0:
+            print(red("Update failed: the current branch has no upstream. Set one with git branch --set-upstream-to."))
+            return False
+
+        pull_args = ["pull", "--ff-only"]
+        if ref != "main":
+            remote = upstream.stdout.strip().split("/", 1)[0]
+            pull_args.extend([remote, ref])
+        pull = git(*pull_args)
+        if pull.returncode != 0:
+            print(red(f"Update failed: git pull could not fast-forward this checkout: {pull.stderr.strip()}"))
+            return False
+
+        refresh = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--no-deps", "--no-build-isolation", "-e", str(root)],
+            cwd=str(root), capture_output=True, text=True, check=False,
+        )
+        if refresh.returncode != 0:
+            print(red("The source was pulled, but refreshing the editable install failed."))
+            if refresh.stderr.strip():
+                print(dim(refresh.stderr.strip()))
+            return False
+    except OSError as e:
+        print(red(f"Update failed: {e}"))
+        return False
+    return True
+
+
 def run_update(ref="main"):
-    """Install a requested ref using the published install.sh entry point."""
+    """Update a cloned checkout directly, or use install.sh for an archive-based install."""
     old_version = __version__
     print(f"Updating Code Shellie from {old_version} to {ref}...")
     env = os.environ.copy()
     env["CODESH_REF"] = ref
 
-    try:
-        with tempfile.TemporaryDirectory(prefix="codesh-update-") as temp_dir:
-            installer = Path(temp_dir) / "install.sh"
-            download = subprocess.run(
-                ["curl", "-fsSL", UPDATE_INSTALLER_URL, "-o", str(installer)], check=False,
-            )
-            if download.returncode != 0:
-                print(red("Update failed: could not download the installer. The installed copy was not changed."))
-                return False
-            install = subprocess.run(["bash", str(installer)], env=env, check=False)
-            if install.returncode != 0:
-                print(red("Update failed. The existing installation was restored if replacement had started."))
-                return False
-    except OSError as e:
-        print(red(f"Update failed: {e}. The installed copy was not changed."))
-        return False
+    checkout = _find_checkout_root()
+    if checkout is not None:
+        if not _update_checkout(checkout, ref):
+            return False
+    else:
+        try:
+            with tempfile.TemporaryDirectory(prefix="codesh-update-") as temp_dir:
+                installer = Path(temp_dir) / "install.sh"
+                download = subprocess.run(
+                    ["curl", "-fsSL", UPDATE_INSTALLER_URL, "-o", str(installer)], check=False,
+                )
+                if download.returncode != 0:
+                    print(red("Update failed: could not download the installer. The installed copy was not changed."))
+                    return False
+                install = subprocess.run(["bash", str(installer)], env=env, check=False)
+                if install.returncode != 0:
+                    print(red("Update failed. The existing installation was restored if replacement had started."))
+                    return False
+        except OSError as e:
+            print(red(f"Update failed: {e}. The installed copy was not changed."))
+            return False
 
     new_version = _installed_version()
     print(green(f"Updated Code Shellie: {old_version} -> {new_version}"))

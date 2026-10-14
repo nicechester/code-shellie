@@ -280,7 +280,7 @@ Resume this session with: codesh --resume ad632a21
 - `codesh --resume` continues the most recent session started in the current directory.
 - `codesh --resume <id>` continues a specific session, from any directory. If the directory has changed, you get a note, because file paths in the history may no longer apply.
 - `codesh --sessions` lists saved sessions with their IDs, times, directories, and descriptions. `/sessions` does the same in the REPL.
-- `codesh --update [ref]` upgrades from `main`, or installs the given tag/commit. `/update [ref]` does the same in the REPL and one-shot mode. Both commands show the old and new versions; restart `codesh` to load the update.
+- `codesh --update [ref]` upgrades from `main`, or installs the given tag/commit. `/update [ref]` does the same in the REPL and one-shot mode. For installs running from a Git checkout, the updater fast-forwards the checkout with `git pull` and refreshes its editable package metadata; it stops if the checkout has local changes. Other installs update through `install.sh`. Both commands show the old and new versions; restart `codesh` to load the update.
 - A session's description is its first prompt, with whitespace collapsed and cut to 60 characters.
 - `/reset` deletes the current session file, so nothing is left to resume, and starts a new chat.
 - A session expires after 24 hours without a turn. Expired sessions are deleted when `codesh` starts, and can no longer be listed or resumed. Change the limit with `SESSION_TTL_HOURS` in `~/.config/codesh/.env`, for example `SESSION_TTL_HOURS=72`. A value of `0` turns expiry off.
