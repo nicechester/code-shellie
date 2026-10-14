@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "code-shellie"
-version = "1.1.1"
+version = "1.1.2"
 description = "Gemini-powered coding agent inspired by Claude Code and Shellie architecture"
 readme = "README.md"
 requires-python = ">=3.8"
