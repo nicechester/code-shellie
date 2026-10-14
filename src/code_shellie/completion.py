@@ -19,6 +19,7 @@ BASE_SLASH_COMMANDS = (
     "/sources",
     "/diff",
     "/sessions",
+    "/update",
     "/skills",
     "/skill",
     "/exit",
