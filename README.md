@@ -172,7 +172,7 @@ codesh '!git status'
 codesh /setup
 ```
 
-A one-shot prompt that starts with `!` runs that shell command. A prompt that starts with `/` is a command, and only `/setup`, `/clear`, and `/reset` work in this mode. Other slash commands print `no such command` (see [Slash commands](#slash-commands)).
+A one-shot prompt that starts with `!` runs that shell command. A prompt that starts with `/` is a command; `/setup`, `/clear`, `/reset`, and `/update` work in this mode. Other slash commands print `no such command` (see [Slash commands](#slash-commands)).
 
 ### Slash commands
 
@@ -188,6 +188,7 @@ Input that starts with `/` is a command. It never goes to the model.
 | `/mcp` | REPL | Show configured MCP servers, their connection status, and their tools |
 | `/copy` | REPL | Copy the last answer to the system clipboard |
 | `/sessions` | REPL | List saved sessions with their IDs and descriptions |
+| `/update [ref]` | REPL, one-shot | Install the latest `main`, or the given tag/commit, and report the installed versions |
 | `/reset` | REPL, one-shot | Clear the chat and delete the current session file, so nothing is left to resume |
 | `/compress` | REPL | Replace all but the last 4 turns with a summary the model writes, to free context space. The saved session keeps the compressed history, so `--resume` restores it |
 | `/sources` | REPL | Show the full URLs behind the last web search. Resolves the links on demand; does not call the model |
@@ -279,6 +280,7 @@ Resume this session with: codesh --resume ad632a21
 - `codesh --resume` continues the most recent session started in the current directory.
 - `codesh --resume <id>` continues a specific session, from any directory. If the directory has changed, you get a note, because file paths in the history may no longer apply.
 - `codesh --sessions` lists saved sessions with their IDs, times, directories, and descriptions. `/sessions` does the same in the REPL.
+- `codesh --update [ref]` upgrades from `main`, or installs the given tag/commit. `/update [ref]` does the same in the REPL and one-shot mode. For installs running from a Git checkout, the updater fast-forwards the checkout with `git pull` and refreshes its editable package metadata; it stops if the checkout has local changes. Other installs update through `install.sh`. Both commands show the old and new versions; restart `codesh` to load the update.
 - A session's description is its first prompt, with whitespace collapsed and cut to 60 characters.
 - `/reset` deletes the current session file, so nothing is left to resume, and starts a new chat.
 - A session expires after 24 hours without a turn. Expired sessions are deleted when `codesh` starts, and can no longer be listed or resumed. Change the limit with `SESSION_TTL_HOURS` in `~/.config/codesh/.env`, for example `SESSION_TTL_HOURS=72`. A value of `0` turns expiry off.

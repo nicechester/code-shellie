@@ -17,6 +17,30 @@ if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))'; then
 fi
 
 INSTALL_HOME="$HOME/.local/share/codesh"
+STAGE=""
+BACKUP_DIR=""
+ROLLBACK_SOURCE=0
+
+cleanup_update() {
+    local status=$?
+    trap - EXIT
+    if [ "$ROLLBACK_SOURCE" -eq 1 ] && [ "$status" -ne 0 ]; then
+        rm -rf "$INSTALL_HOME/src" 2>/dev/null || true
+        if [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
+            mv "$BACKUP_DIR" "$INSTALL_HOME/src" 2>/dev/null || true
+            if [ -x "$INSTALL_HOME/venv/bin/pip" ]; then
+                "$INSTALL_HOME/venv/bin/pip" install --no-deps -e "$INSTALL_HOME/src" >/dev/null 2>&1 || true
+            fi
+        fi
+    elif [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
+        rm -rf "$BACKUP_DIR" 2>/dev/null || true
+    fi
+    if [ -n "$STAGE" ] && [ -d "$STAGE" ]; then
+        rm -rf "$STAGE" 2>/dev/null || true
+    fi
+    exit "$status"
+}
+trap cleanup_update EXIT
 
 # 2. Find the source. In a checkout, install that tree. Under 'curl | bash' there is no script file,
 #    so download the GitHub archive for CODESH_REF (default main) and install from that.
@@ -34,8 +58,8 @@ else
     ARCHIVE_URL="${CODESH_ARCHIVE_URL:-https://github.com/nicechester/code-shellie/archive/${REF}.tar.gz}"
 
     # Download and unpack into a staging directory first, so a failed download leaves the current install alone
-    STAGE="$(mktemp -d)"
-    trap 'rm -rf "$STAGE"' EXIT
+    mkdir -p "$INSTALL_HOME"
+    STAGE="$(mktemp -d "$INSTALL_HOME/.codesh-stage.XXXXXX")"
     echo "==> Downloading Code Shellie ($REF)..."
     if ! curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$STAGE" --strip-components=1; then
         echo "Error: could not download $ARCHIVE_URL. Check CODESH_REF and your network connection."
@@ -46,10 +70,16 @@ else
         exit 1
     fi
 
-    # Replace the old source wholesale, so no stale files are left behind. The venv is kept and reused.
-    mkdir -p "$INSTALL_HOME"
-    rm -rf "$INSTALL_HOME/src"
+    # Keep the old source until the existing venv has installed the staged copy successfully.
+    BACKUP_DIR="$INSTALL_HOME/.codesh-src-backup.$$"
+    if [ -d "$INSTALL_HOME/src" ]; then
+        mv "$INSTALL_HOME/src" "$BACKUP_DIR"
+    else
+        BACKUP_DIR=""
+    fi
+    ROLLBACK_SOURCE=1
     mv "$STAGE" "$INSTALL_HOME/src"
+    STAGE=""
     SRC_DIR="$INSTALL_HOME/src"
     VENV_DIR="$INSTALL_HOME/venv"
     echo "==> Installed source into $SRC_DIR"
@@ -65,8 +95,10 @@ fi
 
 # 4. Upgrade pip and install package in editable mode
 echo "==> Installing dependencies and package..."
-"$VENV_DIR/bin/pip" install --upgrade pip
-"$VENV_DIR/bin/pip" install -e "$SRC_DIR"
+if ! "$VENV_DIR/bin/pip" install --upgrade pip || ! "$VENV_DIR/bin/pip" install -e "$SRC_DIR"; then
+    echo "Error: package installation failed. Restoring the previous source."
+    exit 1
+fi
 
 # 5. Create ~/.local/bin if not exists
 INSTALL_DIR="$HOME/.local/bin"
@@ -84,6 +116,12 @@ TARGET_PATH="$VENV_DIR/bin/codesh"
 
 echo "==> Linking codesh to $SYMLINK_PATH..."
 ln -sf "$TARGET_PATH" "$SYMLINK_PATH"
+
+# From here the new source and venv are usable. Keep them and remove the backup.
+ROLLBACK_SOURCE=0
+if [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
+    rm -rf "$BACKUP_DIR"
+fi
 
 # 8. Check if ~/.local/bin is in PATH
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then

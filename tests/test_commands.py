@@ -4,6 +4,7 @@ from code_shellie.completion import complete, slash_completions
 def test_slash_completer():
     assert slash_completions("/cl") == ["/clear"]
     assert slash_completions("/res") == ["/reset"]
+    assert slash_completions("/up") == ["/update"]
 
 
 def test_mention_completer_lists_paths(tmp_path, monkeypatch):

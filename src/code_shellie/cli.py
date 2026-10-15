@@ -2,6 +2,8 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 from .config import CONFIG_DIR, get_api_key, get_model_name, save_model
 from . import __version__, sessions
@@ -18,6 +20,118 @@ from .term import bold, cyan, dim, green, red, yellow
 
 CLEAR_SCREEN = "\x1b[2J\x1b[H"
 LATEST = "latest"  # --resume without an id: the latest session for this directory
+UPDATE_INSTALLER_URL = "https://raw.githubusercontent.com/nicechester/code-shellie/main/install.sh"
+
+
+def parse_update_command(command):
+    """Return the requested ref for /update, or None when command is not /update."""
+    parts = command.split()
+    if not parts or parts[0] != "/update":
+        return None
+    if len(parts) > 2:
+        raise ValueError("Usage: /update [ref]")
+    return parts[1] if len(parts) == 2 else "main"
+
+
+def _installed_version():
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", "from importlib.metadata import version; print(version('code-shellie'))"],
+            check=False, capture_output=True, text=True,
+        )
+    except OSError:
+        return "unknown"
+    return (result.stdout.strip() or "unknown") if result.returncode == 0 else "unknown"
+
+
+def _find_checkout_root():
+    """Find the source checkout when this install imports code directly from a Git worktree."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / ".git").exists() and (parent / "pyproject.toml").is_file():
+            return parent
+    return None
+
+
+def _update_checkout(root, ref):
+    """Fast-forward the cloned installation and refresh its editable package metadata."""
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=str(root), capture_output=True, text=True, check=False)
+
+    try:
+        status = git("status", "--porcelain")
+        if status.returncode != 0:
+            print(red(f"Update failed: could not inspect the checkout: {status.stderr.strip()}"))
+            return False
+        if status.stdout.strip():
+            print(red("Update failed: the cloned install has local changes. Commit or stash them before updating."))
+            return False
+
+        branch = git("symbolic-ref", "--quiet", "--short", "HEAD")
+        if branch.returncode != 0:
+            print(red("Update failed: the cloned install is on a detached HEAD. Switch to a branch and retry."))
+            return False
+        upstream = git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+        if upstream.returncode != 0:
+            print(red("Update failed: the current branch has no upstream. Set one with git branch --set-upstream-to."))
+            return False
+
+        pull_args = ["pull", "--ff-only"]
+        if ref != "main":
+            remote = upstream.stdout.strip().split("/", 1)[0]
+            pull_args.extend([remote, ref])
+        pull = git(*pull_args)
+        if pull.returncode != 0:
+            print(red(f"Update failed: git pull could not fast-forward this checkout: {pull.stderr.strip()}"))
+            return False
+
+        refresh = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--no-deps", "--no-build-isolation", "-e", str(root)],
+            cwd=str(root), capture_output=True, text=True, check=False,
+        )
+        if refresh.returncode != 0:
+            print(red("The source was pulled, but refreshing the editable install failed."))
+            if refresh.stderr.strip():
+                print(dim(refresh.stderr.strip()))
+            return False
+    except OSError as e:
+        print(red(f"Update failed: {e}"))
+        return False
+    return True
+
+
+def run_update(ref="main"):
+    """Update a cloned checkout directly, or use install.sh for an archive-based install."""
+    old_version = __version__
+    print(f"Updating Code Shellie from {old_version} to {ref}...")
+    env = os.environ.copy()
+    env["CODESH_REF"] = ref
+
+    checkout = _find_checkout_root()
+    if checkout is not None:
+        if not _update_checkout(checkout, ref):
+            return False
+    else:
+        try:
+            with tempfile.TemporaryDirectory(prefix="codesh-update-") as temp_dir:
+                installer = Path(temp_dir) / "install.sh"
+                download = subprocess.run(
+                    ["curl", "-fsSL", UPDATE_INSTALLER_URL, "-o", str(installer)], check=False,
+                )
+                if download.returncode != 0:
+                    print(red("Update failed: could not download the installer. The installed copy was not changed."))
+                    return False
+                install = subprocess.run(["bash", str(installer)], env=env, check=False)
+                if install.returncode != 0:
+                    print(red("Update failed. The existing installation was restored if replacement had started."))
+                    return False
+        except OSError as e:
+            print(red(f"Update failed: {e}. The installed copy was not changed."))
+            return False
+
+    new_version = _installed_version()
+    print(green(f"Updated Code Shellie: {old_version} -> {new_version}"))
+    print(yellow("Restart codesh to load the new version."))
+    return True
 
 
 def _print_skills():
@@ -83,7 +197,16 @@ def main(argv=None):
     parser.add_argument("--resume", nargs="?", const=LATEST, default=None, metavar="ID",
                         help="continue a saved session: the latest for this directory, or the one with ID")
     parser.add_argument("--sessions", action="store_true", help="list saved sessions and exit")
+    parser.add_argument("--update", nargs="?", const="main", default=None, metavar="REF",
+                        help="update Code Shellie from main or the given tag/commit")
     args = parser.parse_args(argv)
+    if args.update is not None:
+        try:
+            if not run_update(args.update):
+                sys.exit(1)
+        finally:
+            shutdown_mcp()
+        return
     if args.sessions:
         print_sessions()
         return
@@ -95,6 +218,17 @@ def main(argv=None):
 
 
 def run(prompt, resume=None):
+    if prompt:
+        try:
+            update_ref = parse_update_command(prompt)
+        except ValueError as e:
+            print(red(str(e)))
+            return
+        if update_ref is not None:
+            if not run_update(update_ref):
+                sys.exit(1)
+            return
+
     sessions.purge_expired()
     api_key = get_api_key()
     if not api_key:
@@ -170,6 +304,7 @@ def run(prompt, resume=None):
                 print(f"  {cyan('/compress')} - Summarize older turns to free context space (keeps the last {KEEP_TURNS})")
                 print(f"  {cyan('/copy')}    - Copy the last answer to the clipboard")
                 print(f"  {cyan('/sessions')} - List saved sessions")
+                print(f"  {cyan('/update [ref]')} - Update Code Shellie from main or a tag/commit")
                 print(f"  {cyan('/sources')} - Show the full URLs of the last web search's sources")
                 print(f"  {cyan('/diff')}    - Show the diffs of files edited in the last turn")
                 print(f"  {cyan('/skills')}  - List skills and whether each is enabled")
@@ -179,6 +314,14 @@ def run(prompt, resume=None):
                 print(f"  {cyan('!command')} - Run a shell command directly")
                 print(f"  {cyan('@path')}    - Attach a file or directory listing to your message")
                 print(f"  {cyan('exit/quit, /exit, /quit')} - Exit the REPL")
+                continue
+            try:
+                update_ref = parse_update_command(user_input)
+            except ValueError as e:
+                print(red(str(e)))
+                continue
+            if update_ref is not None:
+                run_update(update_ref)
                 continue
             if user_input == "/mcp":
                 get_manager().print_status()
