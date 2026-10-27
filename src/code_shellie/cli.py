@@ -329,6 +329,7 @@ def run(prompt, resume=None):
             if user_input == "/context":
                 print(f"Context: {agent.prompt_token_count:,} / {agent.model_limit or 0:,} tokens")
                 print(f"Session total: {agent.total_token_count:,} tokens")
+                print(f"Session API requests: {agent.total_api_requests:,}")
                 continue
             if user_input == "/clear":
                 print(CLEAR_SCREEN, end="")
