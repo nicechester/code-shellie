@@ -1,3 +1,6 @@
+import pytest
+
+from code_shellie import cli
 from code_shellie.completion import complete, slash_completions
 
 
@@ -5,6 +8,15 @@ def test_slash_completer():
     assert slash_completions("/cl") == ["/clear"]
     assert slash_completions("/res") == ["/reset"]
     assert slash_completions("/up") == ["/update"]
+    assert slash_completions("/ver") == ["/version"]
+
+
+def test_version_command_does_not_initialize_agent(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "Agent", lambda: pytest.fail("version command should not initialize agent"))
+
+    cli.run("/version")
+
+    assert capsys.readouterr().out.strip() == f"codesh {cli.__version__}"
 
 
 def test_mention_completer_lists_paths(tmp_path, monkeypatch):

@@ -218,6 +218,10 @@ def main(argv=None):
 
 
 def run(prompt, resume=None):
+    if prompt == "/version":
+        print(f"codesh {__version__}")
+        return
+
     if prompt:
         try:
             update_ref = parse_update_command(prompt)
@@ -293,8 +297,9 @@ def run(prompt, resume=None):
             if user_input.lower() in ("exit", "quit", "/exit", "/quit"):
                 break
             if user_input == "/help":
-                print(yellow("Available Commands:"))
+                print(yellow(f"Available Commands (codesh {__version__}):"))
                 print(f"  {cyan('/help')}    - Show this help message")
+                print(f"  {cyan('/version')} - Show the installed Code Shellie version")
                 print(f"  {cyan('/setup')}   - Reconfigure Gemini API credentials and model")
                 print(f"  {cyan('/model')}   - Show or change the Gemini model (/model <name>)")
                 print(f"  {cyan('/mcp')}     - Show configured MCP servers and their tools")
@@ -323,12 +328,16 @@ def run(prompt, resume=None):
             if update_ref is not None:
                 run_update(update_ref)
                 continue
+            if user_input == "/version":
+                print(f"codesh {__version__}")
+                continue
             if user_input == "/mcp":
                 get_manager().print_status()
                 continue
             if user_input == "/context":
                 print(f"Context: {agent.prompt_token_count:,} / {agent.model_limit or 0:,} tokens")
                 print(f"Session total: {agent.total_token_count:,} tokens")
+                print(f"Session API requests: {agent.total_api_requests:,}")
                 continue
             if user_input == "/clear":
                 print(CLEAR_SCREEN, end="")

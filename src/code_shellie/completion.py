@@ -8,6 +8,7 @@ MAX_SUGGESTIONS = 200
 # Built-in slash commands handled in cli.py.
 BASE_SLASH_COMMANDS = (
     "/help",
+    "/version",
     "/setup",
     "/model",
     "/mcp",

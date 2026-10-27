@@ -76,6 +76,11 @@ class Agent:
             "You are Code Shellie, an expert AI software engineering agent. "
             "You have access to local files and shell execution tools. "
             "Always inspect, test, and explain your changes clearly. "
+            "Use the Project Layout context to locate files before exploring. "
+            "For independent reads or searches, request multiple tool calls in the same response when possible; "
+            "wait for results only when the next step depends on them. Use run_shell_command to combine bounded, "
+            "related read-only exploration, and avoid rereading unchanged files. For multi-file coding tasks, "
+            "group independent edits after inspecting the relevant files; do not add planning turns for simple tasks. "
             f"{MEMORY_GUIDANCE} "
             f"{CODING_GUIDANCE}"
         )
@@ -90,6 +95,8 @@ class Agent:
         self.session = None  # metadata of the saved session this chat writes to; None until the first turn completes
         self.prompt_token_count = 0
         self.total_token_count = 0
+        self.turn_api_requests = 0
+        self.total_api_requests = 0
         self.last_answer = ""
         self.model_limit = gemini.get_input_limit(self.model, self.api_key)
 
@@ -111,6 +118,8 @@ class Agent:
         self.session = None
         self.prompt_token_count = 0
         self.total_token_count = 0
+        self.turn_api_requests = 0
+        self.total_api_requests = 0
 
     def discard_session(self):
         """Delete the current session file and clear the chat, so nothing is left to resume."""
@@ -124,6 +133,8 @@ class Agent:
         self.session = {key: data[key] for key in ("id", "started", "cwd", "model", "description")}
         self.prompt_token_count = 0
         self.total_token_count = 0
+        self.turn_api_requests = 0
+        self.total_api_requests = 0
 
     def _save_session(self, prompt: str):
         if self.session is None:
@@ -149,6 +160,8 @@ class Agent:
 
     def _generate(self, payload: dict):
         """One request to the model. Returns (status, body). Separate so tests can replace it."""
+        self.turn_api_requests += 1
+        self.total_api_requests += 1
         return gemini.generate(self.model, self.api_key, payload)
 
     def _send(self, parts):
@@ -207,6 +220,7 @@ class Agent:
         start = len(self.history)
         self.last_edits = {}
         self.tool_calls = 0
+        self.turn_api_requests = 0
         try:
             self._run_turn(prompt)
         except (Exception, KeyboardInterrupt):  # Ctrl+C stops the turn; its messages are dropped
@@ -349,5 +363,6 @@ class Agent:
             ctx = f"ctx {self.prompt_token_count:,}"
         view = "verbose" if self.verbose else "compact"
         written = len(self.last_edits)  # files this turn wrote successfully, so a claimed edit with 0 is visible
-        return f"{where} | {self.model} | {ctx} | files written: {written} | tool calls: {self.tool_calls} | {view}"
+        return (f"{where} | {self.model} | {ctx} | files written: {written} | "
+                f"tool calls: {self.tool_calls} | API requests: {self.turn_api_requests} | {view}")
 

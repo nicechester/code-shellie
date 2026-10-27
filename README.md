@@ -101,7 +101,7 @@ Press `Ctrl+O` at the prompt to switch to verbose output, which shows each tool'
 
 Answers are shown with basic Markdown styling: headings, lists, block quotes, code blocks, **bold**, *italic*, and `inline code`. Other Markdown is printed as written.
 
-Each answer ends with a footer line: the working directory and git branch, the model, the context size of the request against the model's limit, the number of files the turn wrote, and the current output view.
+Each answer ends with a footer line: the working directory and git branch, the model, the context size of the request against the model's limit, the number of files the turn wrote, tool calls, Gemini API requests made for the turn (including retries), and the current output view. `/context` also shows the Gemini API request count for the current chat.
 
 If an answer says a change was made but the turn wrote no file, codesh prints a warning. Check with `/diff` or `git status`.
 
@@ -172,7 +172,7 @@ codesh '!git status'
 codesh /setup
 ```
 
-A one-shot prompt that starts with `!` runs that shell command. A prompt that starts with `/` is a command; `/setup`, `/clear`, `/reset`, and `/update` work in this mode. Other slash commands print `no such command` (see [Slash commands](#slash-commands)).
+A one-shot prompt that starts with `!` runs that shell command. A prompt that starts with `/` is a command; `/version`, `/setup`, `/clear`, `/reset`, and `/update` work in this mode. Other slash commands print `no such command` (see [Slash commands](#slash-commands)).
 
 ### Slash commands
 
@@ -181,9 +181,10 @@ Input that starts with `/` is a command. It never goes to the model.
 | Command | Where | Description |
 |---|---|---|
 | `/help` | REPL | List available commands |
+| `/version` | REPL, one-shot | Show the installed Code Shellie version |
 | `/setup` | REPL, one-shot | Change the Gemini API key and model name |
 | `/model` | REPL | Show the current model. `/model <name>` switches to that model and saves it |
-| `/context` | REPL | Show the tokens in the last request against the model's limit, and the total tokens used this session |
+| `/context` | REPL | Show the tokens in the last request against the model's limit, total tokens used this session, and Gemini API requests made in the current chat |
 | `/clear` | REPL, one-shot | Clear the terminal screen. The conversation is kept |
 | `/mcp` | REPL | Show configured MCP servers, their connection status, and their tools |
 | `/copy` | REPL | Copy the last answer to the system clipboard |
@@ -199,6 +200,8 @@ Input that starts with `/` is a command. It never goes to the model.
 | `/exit`, `/quit` | REPL | Leave the REPL |
 
 Any other input that starts with `/` prints `no such command: /<name>` immediately and does nothing else. Nothing is sent to the model, so a typo costs no API quota.
+
+For request-count definitions and a repeatable before/after usage comparison, see [the API usage investigation](docs/API_USAGE.md).
 
 Note that this applies to anything starting with `/`, including paths typed as a prompt. To give the model a path, use `@` (see below) instead of starting the message with `/`.
 
@@ -362,7 +365,7 @@ The agent can save lessons it has confirmed, such as where a tool lives or a com
 
 ### Project layout
 
-Inside a git repository, the agent gets a project summary at startup, so it can find its way around without `list_directory` calls. It is built without the model, from files the project already has, and cached in `~/.config/codesh/code/<repo>-<hash>/index.txt`, outside the repository. It is rebuilt when `HEAD` moves to a new commit, and codesh prints `Project summary regenerated at commit <sha>` when that happens.
+Inside a git repository, the agent gets a project summary at startup, so it can find its way around without `list_directory` calls. It is built without the model, from files the project already has, and cached in `~/.config/codesh/code/<repo>-<hash>/index.txt`, outside the repository. The module and convention summary is rebuilt when `HEAD` moves to a new commit, and codesh prints `Project summary regenerated at commit <sha>` when that happens. The file tree is refreshed from Git's current view of tracked and non-ignored untracked files at each startup, so uncommitted additions and removals appear without rebuilding the summary.
 
 The summary has these parts, each taken from the project's own files:
 
@@ -371,7 +374,7 @@ The summary has these parts, each taken from the project's own files:
 - **Modules:** the first line of each source module's docstring. Test files are skipped.
 - **Files:** the files in each directory, from git's view (tracked files and untracked files that are not ignored).
 
-The header records the commit and the date the summary was made. Uncommitted changes to these files show up after their next commit. Long lists are truncated with a "... more" note. Outside git, no summary is added. The summary is built synchronously at startup, which takes milliseconds for a project this size.
+The header records the commit and the date the summary was made. Changes to conventions and module summaries show up after their next commit; the file list reflects the current working tree. Long lists are truncated with a "... more" note. Outside git, no summary is added. The summary is built synchronously at startup, which takes milliseconds for a project this size.
 
 ## Tools available to the model
 
