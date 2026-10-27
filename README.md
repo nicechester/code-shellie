@@ -172,7 +172,7 @@ codesh '!git status'
 codesh /setup
 ```
 
-A one-shot prompt that starts with `!` runs that shell command. A prompt that starts with `/` is a command; `/setup`, `/clear`, `/reset`, and `/update` work in this mode. Other slash commands print `no such command` (see [Slash commands](#slash-commands)).
+A one-shot prompt that starts with `!` runs that shell command. A prompt that starts with `/` is a command; `/version`, `/setup`, `/clear`, `/reset`, and `/update` work in this mode. Other slash commands print `no such command` (see [Slash commands](#slash-commands)).
 
 ### Slash commands
 
@@ -181,6 +181,7 @@ Input that starts with `/` is a command. It never goes to the model.
 | Command | Where | Description |
 |---|---|---|
 | `/help` | REPL | List available commands |
+| `/version` | REPL, one-shot | Show the installed Code Shellie version |
 | `/setup` | REPL, one-shot | Change the Gemini API key and model name |
 | `/model` | REPL | Show the current model. `/model <name>` switches to that model and saves it |
 | `/context` | REPL | Show the tokens in the last request against the model's limit, total tokens used this session, and Gemini API requests made in the current chat |
