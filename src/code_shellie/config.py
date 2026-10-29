@@ -64,3 +64,9 @@ def get_model_name() -> str:
 def get_search_model() -> str:
     load_environment()
     return os.getenv("SEARCH_MODEL", "gemma-4-26b-a4b-it")
+
+
+def get_code_mode() -> bool:
+    """Code Mode (the run_script tool) is on unless CODE_MODE is off, 0 or false."""
+    load_environment()
+    return os.getenv("CODE_MODE", "on").strip().lower() not in ("off", "0", "false")

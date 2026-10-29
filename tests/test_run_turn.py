@@ -2,7 +2,7 @@ import copy
 
 import pytest
 
-from code_shellie import core, sessions
+from code_shellie import core, sessions, tools
 from code_shellie.core import Agent
 from code_shellie.gemini import GeminiError
 
@@ -348,3 +348,21 @@ def test_footer_shows_tool_call_count(monkeypatch):
     agent.run_turn("read")
 
     assert seen == [1]
+
+
+def test_run_script_writes_show_in_last_edits_and_diff(monkeypatch, tmp_path, compact_view):
+    class NoMcp:
+        def declarations(self):
+            return []
+
+        def has_tool(self, name):
+            return False
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(tools, "get_manager", NoMcp)
+    agent = make_agent([ok(function_calls=[("run_script", {"code": "write('made.txt', 'hello')"})]), ok(text="done")])
+
+    agent.run_turn("make a file")
+
+    assert agent.last_edits == {str(tmp_path / "made.txt"): None}
+    assert "+hello" in agent.edits_diff()
