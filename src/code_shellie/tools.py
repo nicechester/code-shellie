@@ -2,7 +2,8 @@ import os
 import re
 from pathlib import Path
 
-from .config import get_api_key, get_search_model
+from . import code_mode
+from .config import get_api_key, get_code_mode, get_search_model
 from .gemini import search as gemini_search
 from .mcp_client import get_manager
 from .memory import remember as remember_lesson
@@ -11,6 +12,7 @@ from .shell import run_command
 SEARCH_MATCH_LIMIT = 50  # matches returned per pattern, so one broad pattern cannot flood the context
 MAX_LIST_DEPTH = 5
 SKIPPED_DIRS = {"__pycache__", "node_modules", "venv"}
+_pending_edits = {}  # edits made by the last run_script call, until core.py takes them
 
 def _read_one(file_path: str, start_line=None, end_line=None) -> str:
     path = Path(file_path).expanduser()
@@ -135,6 +137,19 @@ def execute_web_search(query: str) -> str:
     """Look up current information with Google Search grounding, using the SEARCH_MODEL setting."""
     return gemini_search(query, get_search_model(), get_api_key())
 
+def run_script(code: str) -> str:
+    """Run a Python script in a child process. Its file helpers can list, search, read and edit many files."""
+    output, edits = code_mode.run(code)
+    _pending_edits.clear()  # only the last script's edits are pending, even if nothing took an earlier batch
+    _pending_edits.update(edits)
+    return output
+
+def take_script_edits() -> dict:
+    """Edits made by the last run_script call, as {absolute path: contents before, or None if new}. Clears them."""
+    edits = dict(_pending_edits)
+    _pending_edits.clear()
+    return edits
+
 # Tool implementations registry
 TOOL_FUNCTIONS = {
     "read_file": read_file,
@@ -144,6 +159,7 @@ TOOL_FUNCTIONS = {
     "run_shell_command": run_shell_command,
     "execute_web_search": execute_web_search,
     "remember": remember_lesson,
+    "run_script": run_script,
 }
 
 # Gemini function declarations as plain dicts (REST field names, OpenAPI-style schema)
@@ -270,11 +286,36 @@ TOOL_DECLARATIONS = [
             "required": ["fact"],
         },
     },
+    {
+        "name": "run_script",
+        "description": (
+            "Run a short Python 3 script that works on many files in one call. Only what the script prints is returned, "
+            "so print counts or matching lines, not whole files. Paths are relative to the working directory. Helpers:\n"
+            "ls(path='.', depth=1) -> list of str (dirs end with '/')\n"
+            "find(glob='**/*', path='.') -> list of str (files only)\n"
+            "grep(pattern, path='.', glob=None, limit=200) -> list of (file, lineno, line)\n"
+            "read(path, start=None, end=None) -> str\n"
+            "write(path, content) -> None (creates parent folders)\n"
+            "edit(path, old, new, count=1) -> int (raises ValueError unless old occurs count times; count=None replaces all)\n"
+            "sh(command) -> str (runs /bin/sh; use it for project imports or other tools)\n"
+            "Scripts cannot call other tools, and they time out after 60 seconds. Hidden and dependency folders are skipped."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "code": {"type": "STRING", "description": "Python 3 source code of the script to run."},
+            },
+            "required": ["code"],
+        },
+    },
 ]
 
 def all_declarations() -> list:
-    """Built-in declarations plus the tools of connected MCP servers."""
-    return [*TOOL_DECLARATIONS, *get_manager().declarations()]
+    """Built-in declarations plus the tools of connected MCP servers. run_script is left out when CODE_MODE is off."""
+    declarations = TOOL_DECLARATIONS
+    if not get_code_mode():
+        declarations = [d for d in declarations if d["name"] != "run_script"]
+    return [*declarations, *get_manager().declarations()]
 
 def execute_tool(name: str, args: dict) -> str:
     manager = get_manager()

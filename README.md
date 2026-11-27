@@ -387,10 +387,33 @@ The model can call these tools. There are no approval prompts: a tool call runs 
 | `list_directory(dir_path)` | Lists a directory, folders first. Hidden entries (starting with `.`) are omitted. |
 | `run_shell_command(command)` | Runs a command through `/bin/sh` and returns stdout, stderr, and any non-zero exit code. Times out after 60 seconds. Output longer than 50,000 characters is cut and marked as truncated. The command does not receive `GEMINI_API_KEY` in its environment. |
 | `remember(fact)` | Saves one confirmed project lesson to `.shellie/MEMORY.md` (see [Project lessons](#project-lessons)). |
+| `run_script(code)` | Runs a short Python script that can list, search, read and edit many files in one call. Only what the script prints goes back to the chat (see [Code Mode](#code-mode)). |
 | `execute_web_search(query)` | Looks up current information with Google Search grounding and returns the answer text. It uses `SEARCH_MODEL` and runs as a separate request, so it does not add to the chat history. |
 | `mcp__<server>__<tool>` | Tools from configured MCP servers (see below). |
 
 Because tools run without confirmation, the agent can change or delete files and run any command your user account can. Keep the working directory and the requests you make in mind, and review changes with `git diff` or similar.
+
+### Code Mode
+
+`run_script` lets the model work on many files in one tool call. The model writes a short Python script; it runs in a separate Python process in the working directory, and only what it prints comes back into the chat. Use it for jobs such as searching a whole project or making the same edit in several files.
+
+The script has these helpers. Paths are relative to the working directory, and `~` is expanded:
+
+| Helper | What it does |
+|---|---|
+| `ls(path=".", depth=1)` | Lists entries; directories end with `/`. |
+| `find(glob="**/*", path=".")` | Lists files matching a pathlib glob. |
+| `grep(pattern, path=".", glob=None, limit=200)` | Returns `(file, line number, line)` for each regex match. Binary files are skipped. |
+| `read(path, start=None, end=None)` | Returns the text of a file, or a line range. |
+| `write(path, content)` | Writes a file, creating parent folders. |
+| `edit(path, old, new, count=1)` | Replaces `old` with `new` if it occurs exactly `count` times (`count=None` replaces all). Otherwise it fails and the file is unchanged. |
+| `sh(command)` | Runs a command with `/bin/sh` and returns its output. |
+
+Hidden entries and the folders `__pycache__`, `node_modules` and `venv` are skipped by `ls`, `find` and `grep`. A script is limited to 60 seconds, and its output to 8,000 characters; longer output is cut and marked as truncated. Scripts cannot call the other tools, including MCP tools. The files a script writes or edits count toward `/diff` and the "files written" count, like files written with `write_file`.
+
+Scripts run with the same permissions as `run_shell_command`. Code Mode is not a security sandbox: a script can read, change or delete anything your user account can, and it can run any command through `sh`.
+
+Code Mode is on by default. Set `CODE_MODE=off` (or `0` or `false`) to remove the `run_script` tool.
 
 ## MCP servers
 
@@ -431,6 +454,12 @@ HTTP servers may answer with plain JSON or a `text/event-stream`. An SSE-only se
 SEARCH_MODEL=gemma-4-26b-a4b-it
 ```
 
+`CODE_MODE` turns the `run_script` tool on or off (see [Code Mode](#code-mode)). It is on unless set to `off`, `0` or `false`:
+
+```
+CODE_MODE=off
+```
+
 The search has its own quota, separate from the chat model's limits. A server error (5xx) is retried after 1, 2, and 4 seconds. If the search still fails, the tool returns `Web search failed (HTTP <status>)` and the chat continues.
 
 ## Rate limits and errors
@@ -459,6 +488,7 @@ code-shellie/
     ├── core.py             # Agent: Gemini chat, system prompt, tool-call loop, retry policy
     ├── gemini.py           # Gemini REST calls and response parsing
     ├── tools.py            # built-in tools and their Gemini function declarations
+    ├── code_mode.py        # run_script: runs a model-written script in a child process with file helpers
     ├── shell.py            # runs run_shell_command with a timeout and output limit
     ├── mcp_client.py       # MCP server connections over HTTP, tool discovery, /mcp status
     ├── http.py             # JSON HTTP helpers on urllib

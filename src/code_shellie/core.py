@@ -6,7 +6,8 @@ import time
 from pathlib import Path
 
 from . import gemini, sessions
-from .config import get_api_key, get_model_name
+from .code_mode import CODE_MODE_GUIDANCE
+from .config import get_api_key, get_code_mode, get_model_name
 from .coding import CODING_GUIDANCE
 from .context import load_contexts
 from .gemini import GeminiError
@@ -16,7 +17,7 @@ from .memory import MEMORY_GUIDANCE
 from .mentions import expand_mentions
 from .skills import enabled_skills_prompt
 from .term import blue, dim, green, red, yellow
-from .tools import all_declarations, execute_tool
+from .tools import all_declarations, execute_tool, take_script_edits
 
 def _read_text_or_none(path: Path):
     """File contents, or None if the file does not exist or cannot be read as text."""
@@ -84,6 +85,8 @@ class Agent:
             f"{MEMORY_GUIDANCE} "
             f"{CODING_GUIDANCE}"
         )
+        if get_code_mode():
+            base_instruction += f" {CODE_MODE_GUIDANCE}"
         extra_context = load_contexts()
         if extra_context:
             base_instruction += f"\n\n{extra_context}"
@@ -303,6 +306,10 @@ class Agent:
                     failed = str(result).startswith(FAILURE_PREFIXES)
                     if target and not failed:
                         self.last_edits.setdefault(str(target), before)
+                    # A script's writes count even when it fails later, because they already happened on disk
+                    script_edits = take_script_edits() if name == "run_script" else {}
+                    for path, script_before in script_edits.items():
+                        self.last_edits.setdefault(path, script_before)
                     if self.verbose:
                         print(dim(f"Result: {str(result)[:200]}..."))
                     elif failed:
@@ -314,6 +321,8 @@ class Agent:
                             print(dim(f"{name} called"))
                         if name == "write_file":
                             print(dim(f"{args.get('file_path', '')} edited"))
+                        for path in script_edits:
+                            print(dim(f"{path} edited"))
 
                     parts.append({"functionResponse": {"name": name, "response": {"result": result}}})
                 reply = self._send(parts)
